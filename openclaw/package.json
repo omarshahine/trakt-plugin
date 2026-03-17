@@ -1,0 +1,36 @@
+{
+  "name": "trakt",
+  "version": "1.0.0",
+  "description": "OpenClaw plugin for Trakt.tv - track movies and TV shows",
+  "type": "module",
+  "openclaw": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "files": [
+    "src/",
+    "skills/",
+    "openclaw.plugin.json"
+  ],
+  "keywords": [
+    "openclaw",
+    "openclaw-plugin",
+    "trakt",
+    "movies",
+    "tv-shows",
+    "watchlist"
+  ],
+  "author": {
+    "name": "Omar Shahine",
+    "email": "omar@shahine.com"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "name": "trakt",
+  "version": "1.0.0",
+  "description": "Track movies and TV shows using trakt.tv CLI",
+  "author": { "name": "Omar Shahine" },
+  "license": "MIT"
+}
