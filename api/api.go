@@ -239,10 +239,15 @@ type Pagination struct {
 	ItemCount string `json:"item_count"`
 }
 
-func (c *APIClient) GetUserHistory(user string, params PaginationsParams) (UserHistory, Pagination, error) {
+func (c *APIClient) GetUserHistory(user string, historyType string, params PaginationsParams) (UserHistory, Pagination, error) {
+	path := fmt.Sprintf("/users/%s/history", user)
+	if historyType != "" {
+		path += "/" + historyType
+	}
+
 	httpResp, err := c.doRequest(requestParams{
 		method:     http.MethodGet,
-		path:       fmt.Sprintf("/users/%s/history", user),
+		path:       path,
 		body:       nil,
 		auth:       true,
 		pagination: params,
@@ -341,6 +346,73 @@ func (c *APIClient) GetUserSettings() (UserSettings, error) {
 	}
 
 	return resp, nil
+}
+
+type WatchlistItem struct {
+	Rank    int       `json:"rank"`
+	ID      int64     `json:"id"`
+	ListedAt time.Time `json:"listed_at"`
+	Notes   string    `json:"notes"`
+	Type    string    `json:"type"`
+	Movie   *struct {
+		Title string `json:"title"`
+		Year  int    `json:"year"`
+		Ids   struct {
+			Trakt int    `json:"trakt"`
+			Slug  string `json:"slug"`
+			Imdb  string `json:"imdb"`
+			Tmdb  int    `json:"tmdb"`
+		} `json:"ids"`
+	} `json:"movie,omitempty"`
+	Show *struct {
+		Title string `json:"title"`
+		Year  int    `json:"year"`
+		Ids   struct {
+			Trakt int    `json:"trakt"`
+			Slug  string `json:"slug"`
+			Tvdb  int    `json:"tvdb"`
+			Imdb  string `json:"imdb"`
+			Tmdb  int    `json:"tmdb"`
+		} `json:"ids"`
+	} `json:"show,omitempty"`
+}
+
+func (c *APIClient) GetUserWatchlist(user string, listType string, params PaginationsParams) ([]WatchlistItem, Pagination, error) {
+	path := fmt.Sprintf("/users/%s/watchlist", user)
+	if listType != "" {
+		path += "/" + listType
+	}
+
+	httpResp, err := c.doRequest(requestParams{
+		method:     http.MethodGet,
+		path:       path,
+		body:       nil,
+		auth:       true,
+		pagination: params,
+	})
+	if err != nil {
+		return nil, Pagination{}, err
+	}
+	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode != 200 {
+		return nil, Pagination{}, fmt.Errorf("failed to get watchlist: %s", httpResp.Status)
+	}
+
+	var resp []WatchlistItem
+	err = json.NewDecoder(httpResp.Body).Decode(&resp)
+	if err != nil {
+		return nil, Pagination{}, err
+	}
+
+	pagination := Pagination{
+		Page:      httpResp.Header.Get("X-Pagination-Page"),
+		Limit:     httpResp.Header.Get("X-Pagination-Limit"),
+		PageCount: httpResp.Header.Get("X-Pagination-Page-Count"),
+		ItemCount: httpResp.Header.Get("X-Pagination-Item-Count"),
+	}
+
+	return resp, pagination, nil
 }
 
 type SearchResult struct {

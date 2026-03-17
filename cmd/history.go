@@ -39,8 +39,12 @@ var historyCmd = &cobra.Command{
 		if err != nil {
 			logrus.WithError(err).Fatal("Failed to get limit")
 		}
+		historyType, err := cmd.Flags().GetString("type")
+		if err != nil {
+			logrus.WithError(err).Fatal("Failed to get type")
+		}
 
-		resp, pagination, err := client.GetUserHistory(settings.User.Ids.Slug, api.PaginationsParams{
+		resp, pagination, err := client.GetUserHistory(settings.User.Ids.Slug, historyType, api.PaginationsParams{
 			Page:  page,
 			Limit: limit,
 		})
@@ -91,6 +95,7 @@ func init() {
 
 	historyCmd.Flags().Int("page", 1, "")
 	historyCmd.Flags().Int("limit", 10, "")
+	historyCmd.Flags().String("type", "", "Filter by type (movies, shows)")
 
 	// Here you will define your flags and configuration settings.
 
