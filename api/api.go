@@ -441,6 +441,55 @@ type SearchResult struct {
 	} `json:"show,omitempty"`
 }
 
+type SyncHistoryReq struct {
+	Movies []SyncItem `json:"movies,omitempty"`
+	Shows  []SyncItem `json:"shows,omitempty"`
+}
+
+type SyncItem struct {
+	WatchedAt string `json:"watched_at,omitempty"`
+	Ids       struct {
+		Trakt int `json:"trakt"`
+	} `json:"ids"`
+}
+
+type SyncHistoryResp struct {
+	Added struct {
+		Movies   int `json:"movies"`
+		Episodes int `json:"episodes"`
+	} `json:"added"`
+	NotFound struct {
+		Movies []interface{} `json:"movies"`
+		Shows  []interface{} `json:"shows"`
+	} `json:"not_found"`
+}
+
+func (c *APIClient) SyncHistory(req *SyncHistoryReq) (*SyncHistoryResp, error) {
+	httpResp, err := c.doRequest(requestParams{
+		method: http.MethodPost,
+		path:   "/sync/history",
+		body:   req,
+		auth:   true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode != 201 {
+		body, _ := ioutil.ReadAll(httpResp.Body)
+		return nil, fmt.Errorf("sync history failed (%s): %s", httpResp.Status, string(body))
+	}
+
+	var resp SyncHistoryResp
+	err = json.NewDecoder(httpResp.Body).Decode(&resp)
+	if err != nil {
+		return nil, err
+	}
+
+	return &resp, nil
+}
+
 func (c *APIClient) Search(query string, searchType string) ([]SearchResult, error) {
 	httpResp, err := c.doRequest(requestParams{
 		method: http.MethodGet,
