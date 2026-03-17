@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"time"
@@ -22,8 +23,10 @@ var watchlistCmd = &cobra.Command{
 		client := api.NewAPIClient()
 
 		s := spinner.New(spinner.CharSets[2], 100*time.Millisecond)
-		s.Start()
-		s.Prefix = "Loading watchlist... "
+		if !jsonOutput {
+			s.Start()
+			s.Prefix = "Loading watchlist... "
+		}
 
 		settings, err := client.GetUserSettings()
 		if err != nil {
@@ -49,6 +52,35 @@ var watchlistCmd = &cobra.Command{
 		})
 		if err != nil {
 			fmt.Println(err)
+			return
+		}
+
+		s.Stop()
+
+		if jsonOutput {
+			type jsonItem struct {
+				Type    string `json:"type"`
+				Title   string `json:"title"`
+				Year    int    `json:"year"`
+				TraktID int    `json:"trakt_id"`
+				AddedAt string `json:"added_at"`
+			}
+			var items []jsonItem
+			for _, v := range resp {
+				switch v.Type {
+				case "movie":
+					if v.Movie != nil {
+						items = append(items, jsonItem{Type: "movie", Title: v.Movie.Title, Year: v.Movie.Year, TraktID: v.Movie.Ids.Trakt, AddedAt: v.ListedAt.Format(time.RFC3339)})
+					}
+				case "show":
+					if v.Show != nil {
+						items = append(items, jsonItem{Type: "show", Title: v.Show.Title, Year: v.Show.Year, TraktID: v.Show.Ids.Trakt, AddedAt: v.ListedAt.Format(time.RFC3339)})
+					}
+				}
+			}
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			enc.Encode(map[string]interface{}{"items": items, "page": pagination.Page, "page_count": pagination.PageCount, "item_count": pagination.ItemCount})
 			return
 		}
 
@@ -85,9 +117,6 @@ var watchlistCmd = &cobra.Command{
 		}
 
 		t.SetStyle(table.StyleRounded)
-
-		s.Stop()
-
 		t.Render()
 
 		fmt.Printf("Page %s out of %s, %s items in total", pagination.Page, pagination.PageCount, pagination.ItemCount)

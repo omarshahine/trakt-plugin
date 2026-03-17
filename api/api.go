@@ -415,6 +415,89 @@ func (c *APIClient) GetUserWatchlist(user string, listType string, params Pagina
 	return resp, pagination, nil
 }
 
+type ShowProgress struct {
+	Aired     int  `json:"aired"`
+	Completed int  `json:"completed"`
+	LastWatchedAt *time.Time `json:"last_watched_at"`
+	NextEpisode *struct {
+		Season int    `json:"season"`
+		Number int    `json:"number"`
+		Title  string `json:"title"`
+		Ids    struct {
+			Trakt int `json:"trakt"`
+		} `json:"ids"`
+	} `json:"next_episode"`
+}
+
+func (c *APIClient) GetShowProgress(showID int) (*ShowProgress, error) {
+	httpResp, err := c.doRequest(requestParams{
+		method: http.MethodGet,
+		path:   fmt.Sprintf("/shows/%d/progress/watched", showID),
+		auth:   true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode != 200 {
+		return nil, fmt.Errorf("failed to get show progress: %s", httpResp.Status)
+	}
+
+	var resp ShowProgress
+	err = json.NewDecoder(httpResp.Body).Decode(&resp)
+	if err != nil {
+		return nil, err
+	}
+
+	return &resp, nil
+}
+
+// WatchedShow represents a show from the /users/{id}/watched/shows endpoint.
+// Each entry includes the show metadata and the number of plays/episodes watched.
+type WatchedShow struct {
+	Plays         int        `json:"plays"`
+	LastWatchedAt *time.Time `json:"last_watched_at"`
+	LastUpdatedAt *time.Time `json:"last_updated_at"`
+	Show          *struct {
+		Title string `json:"title"`
+		Year  int    `json:"year"`
+		Ids   struct {
+			Trakt int    `json:"trakt"`
+			Slug  string `json:"slug"`
+			Tvdb  int    `json:"tvdb"`
+			Imdb  string `json:"imdb"`
+			Tmdb  int    `json:"tmdb"`
+		} `json:"ids"`
+	} `json:"show"`
+}
+
+func (c *APIClient) GetUserWatched(user string, watchedType string) ([]WatchedShow, error) {
+	path := fmt.Sprintf("/users/%s/watched/%s", user, watchedType)
+
+	httpResp, err := c.doRequest(requestParams{
+		method: http.MethodGet,
+		path:   path,
+		auth:   true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode != 200 {
+		return nil, fmt.Errorf("failed to get watched shows: %s", httpResp.Status)
+	}
+
+	var resp []WatchedShow
+	err = json.NewDecoder(httpResp.Body).Decode(&resp)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp, nil
+}
+
 type SearchResult struct {
 	Type  string  `json:"type"`
 	Score float64 `json:"score"`

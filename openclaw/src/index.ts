@@ -297,10 +297,6 @@ function buildCliArgs(
 export default function activate(context: OpenClawContext): void {
 	const config = context.config;
 
-	// Set env vars from config for potential future CLI env-based auth
-	if (config?.clientId) process.env.TRAKT_CLIENT_ID = config.clientId;
-	if (config?.clientSecret) process.env.TRAKT_CLIENT_SECRET = config.clientSecret;
-
 	let cliPath: string;
 
 	try {

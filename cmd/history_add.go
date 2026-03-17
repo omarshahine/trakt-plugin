@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -61,8 +62,10 @@ var historyAddCmd = &cobra.Command{
 		})
 
 		for _, query := range args {
-			s.Prefix = fmt.Sprintf("Searching for \"%s\"... ", query)
-			s.Start()
+			if !jsonOutput {
+				s.Prefix = fmt.Sprintf("Searching for \"%s\"... ", query)
+				s.Start()
+			}
 
 			results, err := client.Search(query, searchType)
 			s.Stop()
@@ -121,22 +124,44 @@ var historyAddCmd = &cobra.Command{
 			}
 		}
 
-		t.SetStyle(table.StyleRounded)
-		t.Render()
+		if !jsonOutput {
+			t.SetStyle(table.StyleRounded)
+			t.Render()
+		}
 
 		if len(syncReq.Shows) == 0 && len(syncReq.Movies) == 0 {
-			fmt.Println("\nNo items to add.")
+			if jsonOutput {
+				fmt.Println("{\"error\": \"no items matched\"}")
+			} else {
+				fmt.Println("\nNo items to add.")
+			}
 			return
 		}
 
-		fmt.Printf("\nAdding %d shows and %d movies to history...\n", len(syncReq.Shows), len(syncReq.Movies))
+		if !jsonOutput {
+			fmt.Printf("\nAdding %d shows and %d movies to history...\n", len(syncReq.Shows), len(syncReq.Movies))
+		}
 
-		s.Prefix = "Syncing... "
-		s.Start()
+		if !jsonOutput {
+			s.Prefix = "Syncing... "
+			s.Start()
+		}
 		resp, err := client.SyncHistory(syncReq)
 		s.Stop()
 		if err != nil {
 			logrus.WithError(err).Fatal("Failed to sync history")
+		}
+
+		if jsonOutput {
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			enc.Encode(map[string]interface{}{
+				"added_movies":   resp.Added.Movies,
+				"added_episodes": resp.Added.Episodes,
+				"not_found_movies": len(resp.NotFound.Movies),
+				"not_found_shows":  len(resp.NotFound.Shows),
+			})
+			return
 		}
 
 		fmt.Printf("Added: %d movies, %d episodes\n", resp.Added.Movies, resp.Added.Episodes)

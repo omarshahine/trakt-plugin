@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -30,8 +31,10 @@ var searchCmd = &cobra.Command{
 		}
 
 		s := spinner.New(spinner.CharSets[2], 100*time.Millisecond)
-		s.Start()
-		s.Prefix = fmt.Sprintf("Searching for '%s'... ", query)
+		if !jsonOutput {
+			s.Start()
+			s.Prefix = fmt.Sprintf("Searching for '%s'... ", query)
+		}
 
 		results, err := client.Search(query, searchType)
 		if err != nil {
@@ -42,7 +45,39 @@ var searchCmd = &cobra.Command{
 		s.Stop()
 
 		if len(results) == 0 {
-			fmt.Println("No results found.")
+			if jsonOutput {
+				fmt.Println("{\"items\": []}")
+			} else {
+				fmt.Println("No results found.")
+			}
+			return
+		}
+
+		if jsonOutput {
+			type jsonSearchItem struct {
+				Type    string `json:"type"`
+				Title   string `json:"title"`
+				Year    int    `json:"year"`
+				TraktID int    `json:"trakt_id"`
+				IMDB    string `json:"imdb"`
+				Score   float64 `json:"score"`
+			}
+			var items []jsonSearchItem
+			for _, r := range results {
+				switch r.Type {
+				case "movie":
+					if r.Movie != nil {
+						items = append(items, jsonSearchItem{Type: "movie", Title: r.Movie.Title, Year: r.Movie.Year, TraktID: r.Movie.Ids.Trakt, IMDB: r.Movie.Ids.Imdb, Score: r.Score})
+					}
+				case "show":
+					if r.Show != nil {
+						items = append(items, jsonSearchItem{Type: "show", Title: r.Show.Title, Year: r.Show.Year, TraktID: r.Show.Ids.Trakt, IMDB: r.Show.Ids.Imdb, Score: r.Score})
+					}
+				}
+			}
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			enc.Encode(map[string]interface{}{"items": items})
 			return
 		}
 
