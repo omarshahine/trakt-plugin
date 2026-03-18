@@ -81,7 +81,7 @@ trakt-cli search "Shogun" --json
 trakt-cli search "Inception" --type movie --json
 ```
 
-- JSON output: `{ "items": [{ "type", "title", "year", "trakt_id", "imdb", "score" }] }`
+- JSON output: `{ "items": [{ "type", "title", "year", "trakt_id", "imdb" }] }`
 - `--type`: `movie`, `show`, or `movie,show` (default)
 
 ## Notes

@@ -60,18 +60,17 @@ var searchCmd = &cobra.Command{
 				Year    int    `json:"year"`
 				TraktID int    `json:"trakt_id"`
 				IMDB    string `json:"imdb"`
-				Score   float64 `json:"score"`
 			}
 			var items []jsonSearchItem
 			for _, r := range results {
 				switch r.Type {
 				case "movie":
 					if r.Movie != nil {
-						items = append(items, jsonSearchItem{Type: "movie", Title: r.Movie.Title, Year: r.Movie.Year, TraktID: r.Movie.Ids.Trakt, IMDB: r.Movie.Ids.Imdb, Score: r.Score})
+						items = append(items, jsonSearchItem{Type: "movie", Title: r.Movie.Title, Year: r.Movie.Year, TraktID: r.Movie.Ids.Trakt, IMDB: r.Movie.Ids.Imdb})
 					}
 				case "show":
 					if r.Show != nil {
-						items = append(items, jsonSearchItem{Type: "show", Title: r.Show.Title, Year: r.Show.Year, TraktID: r.Show.Ids.Trakt, IMDB: r.Show.Ids.Imdb, Score: r.Score})
+						items = append(items, jsonSearchItem{Type: "show", Title: r.Show.Title, Year: r.Show.Year, TraktID: r.Show.Ids.Trakt, IMDB: r.Show.Ids.Imdb})
 					}
 				}
 			}

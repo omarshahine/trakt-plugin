@@ -71,7 +71,7 @@ const TOOLS: Array<{
 		name: 'trakt_search',
 		command: 'search',
 		description:
-			'Search Trakt.tv for movies and TV shows. Returns title, year, trakt_id, imdb, and relevance score.',
+			'Search Trakt.tv for movies and TV shows. Returns title, year, trakt_id, and imdb.',
 		parameters: {
 			type: 'object',
 			properties: {
