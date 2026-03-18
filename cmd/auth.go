@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/angristan/trakt-cli/api"
+	"github.com/omarshahine/trakt-plugin/api"
 	"github.com/briandowns/spinner"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"

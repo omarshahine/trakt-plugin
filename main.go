@@ -1,6 +1,6 @@
 package main
 
-import "github.com/angristan/trakt-cli/cmd"
+import "github.com/omarshahine/trakt-plugin/cmd"
 
 func main() {
 	cmd.Execute()

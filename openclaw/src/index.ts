@@ -218,7 +218,7 @@ function resolveCliPath(config?: PluginConfig): string {
 	}
 
 	throw new Error(
-		'trakt-cli not found. Install with: go install github.com/jcxldn/trakt-cli@latest\n' +
+		'trakt-cli not found. Install with: go install github.com/omarshahine/trakt-plugin@latest\n' +
 			'Or set TRAKT_CLI_PATH or configure cliPath in plugin settings.'
 	);
 }
