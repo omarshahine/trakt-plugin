@@ -45,13 +45,13 @@ go build -o trakt-cli .
 
 ## Authentication
 
-Create a Trakt API app at https://trakt.tv/oauth/applications/new to get a Client ID and Client Secret, then:
-
 ```
-trakt-cli auth --client-id xxx --client-secret yyy
+trakt-cli auth
 Please go to https://trakt.tv/activate and enter the following code: XXXXXXXX
 Successfully authenticated, creds written to ~/.trakt.yaml
 ```
+
+The CLI ships with built-in OAuth credentials. To use your own Trakt API app instead, pass `--client-id` and `--client-secret` flags, or set `TRAKT_CLIENT_ID` and `TRAKT_CLIENT_SECRET` environment variables.
 
 ## Commands
 
