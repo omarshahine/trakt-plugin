@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -38,7 +37,7 @@ func NewAPIClient() APIClient {
 	if err != nil {
 		log.Fatal(err)
 	}
-	out, err := ioutil.ReadFile(homeDir + "/.trakt.yaml")
+	out, err := os.ReadFile(homeDir + "/.trakt.yaml")
 	if err != nil {
 		logrus.WithError(err).Error("Failed to read ~/.trakt.yaml file, please run `trakt auth`")
 	}
@@ -239,10 +238,15 @@ type Pagination struct {
 	ItemCount string `json:"item_count"`
 }
 
-func (c *APIClient) GetUserHistory(user string, params PaginationsParams) (UserHistory, Pagination, error) {
+func (c *APIClient) GetUserHistory(user string, historyType string, params PaginationsParams) (UserHistory, Pagination, error) {
+	path := fmt.Sprintf("/users/%s/history", user)
+	if historyType != "" {
+		path += "/" + historyType
+	}
+
 	httpResp, err := c.doRequest(requestParams{
 		method:     http.MethodGet,
-		path:       fmt.Sprintf("/users/%s/history", user),
+		path:       path,
 		body:       nil,
 		auth:       true,
 		pagination: params,
@@ -343,6 +347,156 @@ func (c *APIClient) GetUserSettings() (UserSettings, error) {
 	return resp, nil
 }
 
+type WatchlistItem struct {
+	Rank    int       `json:"rank"`
+	ID      int64     `json:"id"`
+	ListedAt time.Time `json:"listed_at"`
+	Notes   string    `json:"notes"`
+	Type    string    `json:"type"`
+	Movie   *struct {
+		Title string `json:"title"`
+		Year  int    `json:"year"`
+		Ids   struct {
+			Trakt int    `json:"trakt"`
+			Slug  string `json:"slug"`
+			Imdb  string `json:"imdb"`
+			Tmdb  int    `json:"tmdb"`
+		} `json:"ids"`
+	} `json:"movie,omitempty"`
+	Show *struct {
+		Title string `json:"title"`
+		Year  int    `json:"year"`
+		Ids   struct {
+			Trakt int    `json:"trakt"`
+			Slug  string `json:"slug"`
+			Tvdb  int    `json:"tvdb"`
+			Imdb  string `json:"imdb"`
+			Tmdb  int    `json:"tmdb"`
+		} `json:"ids"`
+	} `json:"show,omitempty"`
+}
+
+func (c *APIClient) GetUserWatchlist(user string, listType string, params PaginationsParams) ([]WatchlistItem, Pagination, error) {
+	path := fmt.Sprintf("/users/%s/watchlist", user)
+	if listType != "" {
+		path += "/" + listType
+	}
+
+	httpResp, err := c.doRequest(requestParams{
+		method:     http.MethodGet,
+		path:       path,
+		body:       nil,
+		auth:       true,
+		pagination: params,
+	})
+	if err != nil {
+		return nil, Pagination{}, err
+	}
+	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode != 200 {
+		return nil, Pagination{}, fmt.Errorf("failed to get watchlist: %s", httpResp.Status)
+	}
+
+	var resp []WatchlistItem
+	err = json.NewDecoder(httpResp.Body).Decode(&resp)
+	if err != nil {
+		return nil, Pagination{}, err
+	}
+
+	pagination := Pagination{
+		Page:      httpResp.Header.Get("X-Pagination-Page"),
+		Limit:     httpResp.Header.Get("X-Pagination-Limit"),
+		PageCount: httpResp.Header.Get("X-Pagination-Page-Count"),
+		ItemCount: httpResp.Header.Get("X-Pagination-Item-Count"),
+	}
+
+	return resp, pagination, nil
+}
+
+type ShowProgress struct {
+	Aired     int  `json:"aired"`
+	Completed int  `json:"completed"`
+	LastWatchedAt *time.Time `json:"last_watched_at"`
+	NextEpisode *struct {
+		Season int    `json:"season"`
+		Number int    `json:"number"`
+		Title  string `json:"title"`
+		Ids    struct {
+			Trakt int `json:"trakt"`
+		} `json:"ids"`
+	} `json:"next_episode"`
+}
+
+func (c *APIClient) GetShowProgress(showID int) (*ShowProgress, error) {
+	httpResp, err := c.doRequest(requestParams{
+		method: http.MethodGet,
+		path:   fmt.Sprintf("/shows/%d/progress/watched", showID),
+		auth:   true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode != 200 {
+		return nil, fmt.Errorf("failed to get show progress: %s", httpResp.Status)
+	}
+
+	var resp ShowProgress
+	err = json.NewDecoder(httpResp.Body).Decode(&resp)
+	if err != nil {
+		return nil, err
+	}
+
+	return &resp, nil
+}
+
+// WatchedShow represents a show from the /users/{id}/watched/shows endpoint.
+// Each entry includes the show metadata and the number of plays/episodes watched.
+type WatchedShow struct {
+	Plays         int        `json:"plays"`
+	LastWatchedAt *time.Time `json:"last_watched_at"`
+	LastUpdatedAt *time.Time `json:"last_updated_at"`
+	Show          *struct {
+		Title string `json:"title"`
+		Year  int    `json:"year"`
+		Ids   struct {
+			Trakt int    `json:"trakt"`
+			Slug  string `json:"slug"`
+			Tvdb  int    `json:"tvdb"`
+			Imdb  string `json:"imdb"`
+			Tmdb  int    `json:"tmdb"`
+		} `json:"ids"`
+	} `json:"show"`
+}
+
+func (c *APIClient) GetUserWatched(user string, watchedType string) ([]WatchedShow, error) {
+	path := fmt.Sprintf("/users/%s/watched/%s", user, watchedType)
+
+	httpResp, err := c.doRequest(requestParams{
+		method: http.MethodGet,
+		path:   path,
+		auth:   true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode != 200 {
+		return nil, fmt.Errorf("failed to get watched shows: %s", httpResp.Status)
+	}
+
+	var resp []WatchedShow
+	err = json.NewDecoder(httpResp.Body).Decode(&resp)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp, nil
+}
+
 type SearchResult struct {
 	Type  string  `json:"type"`
 	Score float64 `json:"score"`
@@ -367,6 +521,55 @@ type SearchResult struct {
 			Tmdb  int    `json:"tmdb"`
 		} `json:"ids"`
 	} `json:"show,omitempty"`
+}
+
+type SyncHistoryReq struct {
+	Movies []SyncItem `json:"movies,omitempty"`
+	Shows  []SyncItem `json:"shows,omitempty"`
+}
+
+type SyncItem struct {
+	WatchedAt string `json:"watched_at,omitempty"`
+	Ids       struct {
+		Trakt int `json:"trakt"`
+	} `json:"ids"`
+}
+
+type SyncHistoryResp struct {
+	Added struct {
+		Movies   int `json:"movies"`
+		Episodes int `json:"episodes"`
+	} `json:"added"`
+	NotFound struct {
+		Movies []interface{} `json:"movies"`
+		Shows  []interface{} `json:"shows"`
+	} `json:"not_found"`
+}
+
+func (c *APIClient) SyncHistory(req *SyncHistoryReq) (*SyncHistoryResp, error) {
+	httpResp, err := c.doRequest(requestParams{
+		method: http.MethodPost,
+		path:   "/sync/history",
+		body:   req,
+		auth:   true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode != 201 {
+		body, _ := io.ReadAll(httpResp.Body)
+		return nil, fmt.Errorf("sync history failed (%s): %s", httpResp.Status, string(body))
+	}
+
+	var resp SyncHistoryResp
+	err = json.NewDecoder(httpResp.Body).Decode(&resp)
+	if err != nil {
+		return nil, err
+	}
+
+	return &resp, nil
 }
 
 func (c *APIClient) Search(query string, searchType string) ([]SearchResult, error) {

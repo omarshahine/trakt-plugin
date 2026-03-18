@@ -1,6 +1,6 @@
-module github.com/angristan/trakt-cli
+module github.com/omarshahine/trakt-plugin
 
-go 1.17
+go 1.22
 
 require (
 	github.com/briandowns/spinner v1.18.1
