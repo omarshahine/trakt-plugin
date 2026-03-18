@@ -77,7 +77,7 @@ var searchCmd = &cobra.Command{
 			}
 			enc := json.NewEncoder(os.Stdout)
 			enc.SetIndent("", "  ")
-			enc.Encode(map[string]interface{}{"items": items})
+			_ = enc.Encode(map[string]interface{}{"items": items})
 			return
 		}
 

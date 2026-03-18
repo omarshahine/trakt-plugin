@@ -79,7 +79,7 @@ var historyCmd = &cobra.Command{
 			}
 			enc := json.NewEncoder(os.Stdout)
 			enc.SetIndent("", "  ")
-			enc.Encode(map[string]interface{}{"items": items, "page": pagination.Page, "page_count": pagination.PageCount, "item_count": pagination.ItemCount})
+			_ = enc.Encode(map[string]interface{}{"items": items, "page": pagination.Page, "page_count": pagination.PageCount, "item_count": pagination.ItemCount})
 			return
 		}
 

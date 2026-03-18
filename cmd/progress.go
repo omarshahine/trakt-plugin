@@ -155,7 +155,7 @@ or completed but still on the watchlist.`,
 			}
 			enc := json.NewEncoder(os.Stdout)
 			enc.SetIndent("", "  ")
-			enc.Encode(output)
+			_ = enc.Encode(output)
 			return
 		}
 

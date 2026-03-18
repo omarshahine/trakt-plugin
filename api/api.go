@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -38,7 +37,7 @@ func NewAPIClient() APIClient {
 	if err != nil {
 		log.Fatal(err)
 	}
-	out, err := ioutil.ReadFile(homeDir + "/.trakt.yaml")
+	out, err := os.ReadFile(homeDir + "/.trakt.yaml")
 	if err != nil {
 		logrus.WithError(err).Error("Failed to read ~/.trakt.yaml file, please run `trakt auth`")
 	}
@@ -560,7 +559,7 @@ func (c *APIClient) SyncHistory(req *SyncHistoryReq) (*SyncHistoryResp, error) {
 	defer httpResp.Body.Close()
 
 	if httpResp.StatusCode != 201 {
-		body, _ := ioutil.ReadAll(httpResp.Body)
+		body, _ := io.ReadAll(httpResp.Body)
 		return nil, fmt.Errorf("sync history failed (%s): %s", httpResp.Status, string(body))
 	}
 

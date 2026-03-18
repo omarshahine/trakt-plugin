@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"time"
@@ -72,7 +71,7 @@ var authCmd = &cobra.Command{
 				if err != nil {
 					log.Fatal(err)
 				}
-				err = ioutil.WriteFile(homeDir+"/.trakt.yaml", yamlData, 0644)
+				err = os.WriteFile(homeDir+"/.trakt.yaml", yamlData, 0644)
 				if err != nil {
 					fmt.Printf("Error while writing to file. %v", err)
 				}

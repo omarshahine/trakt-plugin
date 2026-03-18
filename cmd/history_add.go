@@ -155,7 +155,7 @@ var historyAddCmd = &cobra.Command{
 		if jsonOutput {
 			enc := json.NewEncoder(os.Stdout)
 			enc.SetIndent("", "  ")
-			enc.Encode(map[string]interface{}{
+			_ = enc.Encode(map[string]interface{}{
 				"added_movies":   resp.Added.Movies,
 				"added_episodes": resp.Added.Episodes,
 				"not_found_movies": len(resp.NotFound.Movies),
