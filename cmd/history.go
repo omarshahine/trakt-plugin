@@ -1,11 +1,12 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"time"
 
-	"github.com/angristan/trakt-cli/api"
+	"github.com/omarshahine/trakt-plugin/api"
 	"github.com/briandowns/spinner"
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/mergestat/timediff"
@@ -23,8 +24,10 @@ var historyCmd = &cobra.Command{
 		client := api.NewAPIClient()
 
 		s := spinner.New(spinner.CharSets[2], 100*time.Millisecond)
-		s.Start()
-		s.Prefix = "Loading history... "
+		if !jsonOutput {
+			s.Start()
+			s.Prefix = "Loading history... "
+		}
 
 		settings, err := client.GetUserSettings()
 		if err != nil {
@@ -39,13 +42,44 @@ var historyCmd = &cobra.Command{
 		if err != nil {
 			logrus.WithError(err).Fatal("Failed to get limit")
 		}
+		historyType, err := cmd.Flags().GetString("type")
+		if err != nil {
+			logrus.WithError(err).Fatal("Failed to get type")
+		}
 
-		resp, pagination, err := client.GetUserHistory(settings.User.Ids.Slug, api.PaginationsParams{
+		resp, pagination, err := client.GetUserHistory(settings.User.Ids.Slug, historyType, api.PaginationsParams{
 			Page:  page,
 			Limit: limit,
 		})
 		if err != nil {
 			fmt.Println(err)
+			return
+		}
+
+		s.Stop()
+
+		if jsonOutput {
+			type jsonHistItem struct {
+				Type      string `json:"type"`
+				Title     string `json:"title"`
+				Year      int    `json:"year,omitempty"`
+				Season    int    `json:"season,omitempty"`
+				Episode   int    `json:"episode,omitempty"`
+				ShowTitle string `json:"show_title,omitempty"`
+				WatchedAt string `json:"watched_at"`
+			}
+			var items []jsonHistItem
+			for _, v := range resp {
+				switch v.Type {
+				case "movie":
+					items = append(items, jsonHistItem{Type: "movie", Title: v.Movie.Title, Year: v.Movie.Year, WatchedAt: v.WatchedAt.Format(time.RFC3339)})
+				case "episode":
+					items = append(items, jsonHistItem{Type: "episode", Title: v.Episode.Title, Season: v.Episode.Season, Episode: v.Episode.Number, ShowTitle: v.Show.Title, WatchedAt: v.WatchedAt.Format(time.RFC3339)})
+				}
+			}
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			_ = enc.Encode(map[string]interface{}{"items": items, "page": pagination.Page, "page_count": pagination.PageCount, "item_count": pagination.ItemCount})
 			return
 		}
 
@@ -76,9 +110,6 @@ var historyCmd = &cobra.Command{
 		}
 
 		t.SetStyle(table.StyleRounded)
-
-		s.Stop()
-
 		t.Render()
 
 		fmt.Printf("Page %s out of %s, %s items in total", pagination.Page, pagination.PageCount, pagination.ItemCount)
@@ -91,6 +122,7 @@ func init() {
 
 	historyCmd.Flags().Int("page", 1, "")
 	historyCmd.Flags().Int("limit", 10, "")
+	historyCmd.Flags().String("type", "", "Filter by type (movies, shows)")
 
 	// Here you will define your flags and configuration settings.
 

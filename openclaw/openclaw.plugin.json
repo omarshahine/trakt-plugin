@@ -1,0 +1,41 @@
+{
+  "id": "trakt",
+  "name": "Trakt",
+  "description": "Track movies and TV shows using trakt.tv",
+  "version": "1.0.0",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "cliPath": {
+        "type": "string",
+        "description": "Path to trakt-cli binary",
+        "default": "trakt-cli"
+      },
+      "clientId": {
+        "type": "string",
+        "description": "Trakt API client ID (from https://trakt.tv/oauth/applications)"
+      },
+      "clientSecret": {
+        "type": "string",
+        "description": "Trakt API client secret"
+      }
+    }
+  },
+  "uiHints": {
+    "cliPath": {
+      "label": "CLI Path",
+      "help": "Path or command name for the trakt-cli binary. Defaults to finding it on PATH.",
+      "placeholder": "trakt-cli"
+    },
+    "clientId": {
+      "label": "Client ID",
+      "help": "Trakt API client ID from https://trakt.tv/oauth/applications",
+      "sensitive": true
+    },
+    "clientSecret": {
+      "label": "Client Secret",
+      "help": "Trakt API client secret from https://trakt.tv/oauth/applications",
+      "sensitive": true
+    }
+  }
+}
