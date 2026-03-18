@@ -191,10 +191,26 @@ const TOOLS: Array<{
 ];
 
 /**
+ * Look up a binary on PATH, cross-platform.
+ * Uses `which` on Unix and `where.exe` on Windows.
+ */
+function whichBinary(name: string): string | null {
+	const cmd = process.platform === 'win32' ? 'where.exe' : 'which';
+	try {
+		const result = execFileSync(cmd, [name], { encoding: 'utf8' }).trim();
+		// `where.exe` can return multiple lines; take the first
+		const first = result.split('\n')[0]?.trim();
+		return first || null;
+	} catch {
+		return null;
+	}
+}
+
+/**
  * Resolve the CLI binary path using a discovery chain:
  * 1. Plugin config cliPath
  * 2. Env var TRAKT_CLI_PATH
- * 3. PATH lookup (which trakt-cli)
+ * 3. PATH lookup (try both `trakt-cli` and `trakt-plugin`)
  * 4. Error with helpful message
  */
 function resolveCliPath(config?: PluginConfig): string {
@@ -209,12 +225,10 @@ function resolveCliPath(config?: PluginConfig): string {
 		return envPath;
 	}
 
-	// 3. PATH lookup
-	try {
-		const result = execFileSync('which', ['trakt-cli'], { encoding: 'utf8' }).trim();
-		if (result) return result;
-	} catch {
-		// Not on PATH
+	// 3. PATH lookup — try both binary names
+	for (const name of ['trakt-cli', 'trakt-plugin']) {
+		const found = whichBinary(name);
+		if (found) return found;
 	}
 
 	throw new Error(
