@@ -30,22 +30,21 @@ type Credentials struct {
 }
 
 // Create a new API client for the given API version.
+// Silently returns an empty-credentials client if ~/.trakt.yaml doesn't exist
+// (the auth command doesn't need credentials to initiate the device flow).
 func NewAPIClient() APIClient {
+	var creds Credentials
 
-	// read ~/.trakt.yaml file
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		log.Fatal(err)
 	}
-	out, err := os.ReadFile(homeDir + "/.trakt.yaml")
-	if err != nil {
-		logrus.WithError(err).Error("Failed to read ~/.trakt.yaml file, please run `trakt auth`")
-	}
 
-	var creds Credentials
-	err = yaml.Unmarshal(out, &creds)
-	if err != nil {
-		logrus.WithError(err).Error("Failed to read ~/.trakt.yaml file, please run `trakt auth`")
+	out, err := os.ReadFile(homeDir + "/.trakt.yaml")
+	if err == nil {
+		if err := yaml.Unmarshal(out, &creds); err != nil {
+			logrus.WithError(err).Error("Failed to parse ~/.trakt.yaml")
+		}
 	}
 
 	return APIClient{
