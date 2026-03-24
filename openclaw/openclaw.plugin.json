@@ -19,7 +19,8 @@
         "type": "string",
         "description": "Trakt API client secret"
       }
-    }
+    },
+    "additionalProperties": false
   },
   "uiHints": {
     "cliPath": {
