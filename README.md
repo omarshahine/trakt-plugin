@@ -26,7 +26,7 @@ Or grab a binary from the [releases](https://github.com/omarshahine/trakt-plugin
 ### OpenClaw Plugin
 
 ```bash
-openclaw plugins install openclaw-trakt
+openclaw plugins install trakt-tools
 ```
 
 ### Claude Code Plugin
@@ -137,9 +137,9 @@ trakt-cli progress --all --json
 
 The `openclaw/` directory contains a native OpenClaw plugin that registers typed tools: `trakt_search`, `trakt_history`, `trakt_history_add`, `trakt_watchlist`, `trakt_progress`, and `trakt_auth`.
 
-Install from NPM:
+Install from ClawHub:
 ```bash
-openclaw plugins install openclaw-trakt
+openclaw plugins install trakt-tools
 ```
 
 Or locally:
