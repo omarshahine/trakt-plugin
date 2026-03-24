@@ -224,7 +224,7 @@ function buildCliArgs(
 }
 
 export default definePluginEntry({
-	id: 'trakt',
+	id: 'trakt-tools',
 	name: 'Trakt',
 	description: 'Track movies and TV shows using trakt.tv',
 

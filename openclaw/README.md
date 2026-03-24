@@ -5,7 +5,7 @@ OpenClaw plugin for [Trakt.tv](https://trakt.tv). Track movies and TV shows, vie
 ## Install
 
 ```bash
-openclaw plugins install openclaw-trakt
+openclaw plugins install trakt-tools
 ```
 
 ## Prerequisites
