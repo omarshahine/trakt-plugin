@@ -88,15 +88,24 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
       - name: Release
+        id: semantic
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx semantic-release
-      - name: Fetch latest tag
         run: |
+          before=$(git describe --tags --abbrev=0 2>/dev/null || echo "none")
+          npx semantic-release
           git fetch --tags
-          latest_tag=$(git describe --tags --abbrev=0)
-          git checkout "$latest_tag"
+          after=$(git describe --tags --abbrev=0 2>/dev/null || echo "none")
+          if [ "$before" != "$after" ]; then
+            echo "new_release=true" >> "$GITHUB_OUTPUT"
+            echo "new_tag=$after" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Fetch latest tag
+        if: steps.semantic.outputs.new_release == 'true'
+        run: |
+          git checkout "${{ steps.semantic.outputs.new_tag }}"
       - name: Run GoReleaser
+        if: steps.semantic.outputs.new_release == 'true'
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
@@ -105,6 +114,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Publish OpenClaw plugin to NPM
+        if: steps.semantic.outputs.new_release == 'true'
         working-directory: openclaw
         run: |
           npm ci
