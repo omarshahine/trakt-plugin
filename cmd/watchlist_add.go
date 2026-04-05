@@ -26,12 +26,10 @@ var watchlistAddCmd = &cobra.Command{
 	Args:  cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		client := api.NewAPIClient()
+		// itemType is a cobra flag with default "show" — no empty-string
+		// fallback needed. We still narrow anything that isn't literally
+		// "movie" down to "show" so the /search/{type} path stays valid.
 		itemType, _ := cmd.Flags().GetString("type")
-
-		if itemType == "" {
-			itemType = "show"
-		}
-
 		searchType := itemType
 		if searchType != "movie" {
 			searchType = "show"

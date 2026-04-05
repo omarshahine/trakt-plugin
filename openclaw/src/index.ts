@@ -103,7 +103,10 @@ const TOOLS: ToolDef[] = [
 		description:
 			'Add movies or shows to the Trakt.tv watchlist. Searches by title and queues matches in one sync call. Accepts multiple titles. Items already on the list are reported under `existing_*` counts.',
 		parameters: Type.Object({
-			titles: Type.Array(Type.String(), { description: 'Title(s) to add to the watchlist' }),
+			titles: Type.Array(Type.String(), {
+				description: 'Title(s) to add to the watchlist',
+				minItems: 1,
+			}),
 			type: Type.Optional(
 				Type.Union([Type.Literal('movie'), Type.Literal('show')], {
 					description: 'Content type (default: show)',
