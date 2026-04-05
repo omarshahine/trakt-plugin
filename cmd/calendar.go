@@ -39,6 +39,13 @@ var calendarCmd = &cobra.Command{
 			}
 		}
 
+		// Fail fast on nonsensical windows. The API layer has a safety net
+		// that resets <=0 to 7, but that silently rewrites user input —
+		// better to reject it here so the mistake is visible.
+		if days <= 0 {
+			logrus.Fatalf("--days must be a positive integer (got %d)", days)
+		}
+
 		s := spinner.New(spinner.CharSets[2], 100*time.Millisecond)
 		if !jsonOutput {
 			s.Prefix = "Loading calendar... "
@@ -95,8 +102,10 @@ var calendarCmd = &cobra.Command{
 			termenv.String("Episode").Bold(),
 			termenv.String("Title").Bold(),
 		})
+		// Hoist terminal-capability detection out of the loop — it's
+		// invariant across iterations.
+		p := termenv.ColorProfile()
 		for _, e := range episodes {
-			p := termenv.ColorProfile()
 			year := termenv.String(fmt.Sprintf("(%d)", e.Show.Year)).Foreground(p.Color("#B9BFCA"))
 			t.AppendRow([]interface{}{
 				timediff.TimeDiff(e.FirstAired),

@@ -843,8 +843,14 @@ func (c *APIClient) GetMyShowsCalendar(start string, days int, onlyNew bool) ([]
 	// Trakt's URL shape is /calendars/my/shows[/new]/{start_date}/{days}.
 	// Both path segments are optional but must be supplied together — you
 	// can't specify days without start_date.
+	//
+	// Use LOCAL time (not UTC) for the default start date: a user in
+	// UTC+12 at 1 AM local is still on yesterday's UTC date, but from
+	// their perspective "today's calendar" means their local today, not
+	// UTC's today. Trakt treats the date string as a calendar date, so
+	// feeding it the user's local date is the right behavior.
 	if start == "" {
-		start = time.Now().UTC().Format("2006-01-02")
+		start = time.Now().Format("2006-01-02")
 	}
 	if days <= 0 {
 		days = 7
