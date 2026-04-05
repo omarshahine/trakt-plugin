@@ -63,7 +63,7 @@ func TestHelp(t *testing.T) {
 	if !strings.Contains(out, "trakt-cli") {
 		t.Error("--help should mention trakt-cli")
 	}
-	for _, cmd := range []string{"auth", "search", "history", "watchlist", "progress"} {
+	for _, cmd := range []string{"auth", "search", "history", "watchlist", "progress", "calendar"} {
 		if !strings.Contains(out, cmd) {
 			t.Errorf("--help should list %q command", cmd)
 		}
@@ -97,7 +97,10 @@ func TestSubcommandHelp(t *testing.T) {
 		{[]string{"watchlist", "--help"}, "watchlist"},
 		{[]string{"progress", "--help"}, "in progress"},
 		{[]string{"history", "add", "--help"}, "watch history"},
+		{[]string{"history", "remove", "--help"}, "watch history"},
 		{[]string{"watchlist", "add", "--help"}, "watchlist"},
+		{[]string{"watchlist", "remove", "--help"}, "watchlist"},
+		{[]string{"calendar", "--help"}, "upcoming episodes"},
 	}
 	for _, tc := range cmds {
 		t.Run(strings.Join(tc.args, "_"), func(t *testing.T) {
