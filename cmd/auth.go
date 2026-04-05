@@ -27,6 +27,10 @@ type Credentials struct {
 	ClientID     string `yaml:"client-id"`
 	ClientSecret string `yaml:"client-secret"`
 	AccessToken  string `yaml:"access-token"`
+	// UserSlug is populated post-auth by fetching /users/settings once so
+	// subsequent read commands can use the cached value without a round-trip.
+	// Kept in sync with api.Credentials — see api/api.go.
+	UserSlug string `yaml:"user-slug,omitempty"`
 }
 
 // resolveClientID returns the client ID from flag, env var, or default.
@@ -93,6 +97,22 @@ var authCmd = &cobra.Command{
 					AccessToken:  tokenResp.AccessToken,
 				}
 
+				// Prime the user-slug cache: fetch /users/settings once now so
+				// the next read command doesn't have to. We use a fresh API client
+				// pointed at the new credentials in-memory (the on-disk file has
+				// not been written yet). Best-effort — if this fails, we still
+				// write the token and GetUserSlug() will re-fetch on first use.
+				primerClient := api.NewAPIClientWithCredentials(api.Credentials{
+					ClientID:     creds.ClientID,
+					ClientSecret: creds.ClientSecret,
+					AccessToken:  creds.AccessToken,
+				})
+				if settings, slugErr := primerClient.GetUserSettings(); slugErr == nil {
+					creds.UserSlug = settings.User.Ids.Slug
+				} else {
+					logrus.WithError(slugErr).Warn("Authenticated, but failed to prime user-slug cache; it will be populated on first use")
+				}
+
 				yamlData, err := yaml.Marshal(&creds)
 				if err != nil {
 					fmt.Printf("Error while Marshaling. %v", err)
@@ -102,7 +122,7 @@ var authCmd = &cobra.Command{
 				if err != nil {
 					log.Fatal(err)
 				}
-				err = os.WriteFile(homeDir+"/.trakt.yaml", yamlData, 0644)
+				err = os.WriteFile(homeDir+"/.trakt.yaml", yamlData, 0600)
 				if err != nil {
 					fmt.Printf("Error while writing to file. %v", err)
 				}

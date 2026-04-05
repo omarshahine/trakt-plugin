@@ -42,9 +42,9 @@ or completed but still on the watchlist.`,
 			s.Prefix = "Loading watchlist... "
 		}
 
-		settings, err := client.GetUserSettings()
+		slug, err := client.GetUserSlug()
 		if err != nil {
-			logrus.WithError(err).Fatal("Failed to get user settings")
+			logrus.WithError(err).Fatal("Failed to resolve trakt user")
 		}
 
 		// Collect unique show IDs from both watchlist and watched history
@@ -56,7 +56,7 @@ or completed but still on the watchlist.`,
 		showMap := make(map[int]showInfo)
 
 		// Get all watchlist shows (up to 100)
-		watchlist, _, err := client.GetUserWatchlist(settings.User.Ids.Slug, "shows", api.PaginationsParams{
+		watchlist, _, err := client.GetUserWatchlist(slug, "shows", api.PaginationsParams{
 			Limit: 100,
 		})
 		if err != nil {
@@ -77,7 +77,7 @@ or completed but still on the watchlist.`,
 
 		// Also get all shows with any watch history
 		s.Prefix = "Loading watched shows... "
-		watched, err := client.GetUserWatched(settings.User.Ids.Slug, "shows")
+		watched, err := client.GetUserWatched(slug, "shows")
 		if err != nil {
 			logrus.WithError(err).Warn("Failed to get watched shows, continuing with watchlist only")
 		} else {

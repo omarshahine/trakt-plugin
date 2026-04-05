@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -27,6 +28,28 @@ type Credentials struct {
 	ClientID     string `yaml:"client-id"`
 	ClientSecret string `yaml:"client-secret"`
 	AccessToken  string `yaml:"access-token"`
+	// UserSlug caches the authenticated user's slug so read-only commands
+	// (watchlist, history, progress) don't have to re-fetch /users/settings
+	// on every invocation. Populated by GetUserSlug() on first use and
+	// refreshed by the auth flow. Note: a duplicate of this struct exists
+	// in cmd/auth.go for yaml marshaling on write; keep the two in sync.
+	UserSlug string `yaml:"user-slug,omitempty"`
+}
+
+// RateLimitError is returned by doRequest when Trakt (or Cloudflare's edge)
+// responds with HTTP 429. It captures the Retry-After header so callers and
+// plugin wrappers can back off structurally instead of parsing stderr.
+type RateLimitError struct {
+	Path              string
+	RetryAfterSeconds int
+	Status            string
+}
+
+func (e *RateLimitError) Error() string {
+	if e.RetryAfterSeconds > 0 {
+		return fmt.Sprintf("rate limited by trakt api: %s (path=%s retry_after=%d)", e.Status, e.Path, e.RetryAfterSeconds)
+	}
+	return fmt.Sprintf("rate limited by trakt api: %s (path=%s)", e.Status, e.Path)
 }
 
 // Create a new API client for the given API version.
@@ -47,6 +70,13 @@ func NewAPIClient() APIClient {
 		}
 	}
 
+	return NewAPIClientWithCredentials(creds)
+}
+
+// NewAPIClientWithCredentials constructs an APIClient with explicit credentials
+// instead of loading them from ~/.trakt.yaml. Used by the auth flow to prime
+// the user-slug cache with a just-issued access token before persisting it.
+func NewAPIClientWithCredentials(creds Credentials) APIClient {
 	return APIClient{
 		Endpoint: "https://api.trakt.tv",
 		Client: &http.Client{
@@ -120,7 +150,61 @@ func (c *APIClient) doRequest(params requestParams) (*http.Response, error) {
 		return nil, err
 	}
 
+	// Detect rate limits (Trakt app-level or Cloudflare 1015 edge) and
+	// surface the Retry-After value as a typed error so wrappers can back
+	// off structurally instead of re-hitting the endpoint immediately.
+	if resp.StatusCode == http.StatusTooManyRequests {
+		retryAfter := 0
+		if v := resp.Header.Get("Retry-After"); v != "" {
+			if n, parseErr := strconv.Atoi(v); parseErr == nil {
+				retryAfter = n
+			}
+		}
+		resp.Body.Close()
+		return nil, &RateLimitError{
+			Path:              params.path,
+			RetryAfterSeconds: retryAfter,
+			Status:            resp.Status,
+		}
+	}
+
 	return resp, nil
+}
+
+// writeCredentials persists c.Credentials to ~/.trakt.yaml. Best-effort:
+// write errors are logged but not returned, because the read commands that
+// trigger a slug refresh should not fail just because disk persistence fails.
+func (c *APIClient) writeCredentials() {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		logrus.WithError(err).Warn("Failed to resolve home directory for trakt credential cache")
+		return
+	}
+	data, err := yaml.Marshal(&c.Credentials)
+	if err != nil {
+		logrus.WithError(err).Warn("Failed to marshal trakt credentials for cache write")
+		return
+	}
+	if err := os.WriteFile(homeDir+"/.trakt.yaml", data, 0600); err != nil {
+		logrus.WithError(err).Warn("Failed to write trakt credential cache ~/.trakt.yaml")
+	}
+}
+
+// GetUserSlug returns the authenticated user's trakt slug, using an on-disk
+// cache in ~/.trakt.yaml to avoid an API round-trip on every read command.
+// On cache miss it fetches /users/settings, persists the slug, and returns it.
+// Stable for the lifetime of the account — invalidated only by the auth flow.
+func (c *APIClient) GetUserSlug() (string, error) {
+	if c.Credentials.UserSlug != "" {
+		return c.Credentials.UserSlug, nil
+	}
+	settings, err := c.GetUserSettings()
+	if err != nil {
+		return "", err
+	}
+	c.Credentials.UserSlug = settings.User.Ids.Slug
+	c.writeCredentials()
+	return c.Credentials.UserSlug, nil
 }
 
 func (c *APIClient) AuthDeviceCode(req *AuthDeviceCodeReq) (*AuthDeviceCodeResp, error) {
