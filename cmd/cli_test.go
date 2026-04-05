@@ -97,6 +97,7 @@ func TestSubcommandHelp(t *testing.T) {
 		{[]string{"watchlist", "--help"}, "watchlist"},
 		{[]string{"progress", "--help"}, "in progress"},
 		{[]string{"history", "add", "--help"}, "watch history"},
+		{[]string{"watchlist", "add", "--help"}, "watchlist"},
 	}
 	for _, tc := range cmds {
 		t.Run(strings.Join(tc.args, "_"), func(t *testing.T) {

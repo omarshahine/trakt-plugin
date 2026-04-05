@@ -655,6 +655,60 @@ func (c *APIClient) SyncHistory(req *SyncHistoryReq) (*SyncHistoryResp, error) {
 	return &resp, nil
 }
 
+// SyncWatchlistReq is the POST /sync/watchlist payload. Items reuse SyncItem
+// for the trakt-id shape but ignore WatchedAt (the watchlist has no watched
+// timestamp — items carry a server-assigned listed_at instead).
+type SyncWatchlistReq struct {
+	Movies []SyncItem `json:"movies,omitempty"`
+	Shows  []SyncItem `json:"shows,omitempty"`
+}
+
+// SyncWatchlistResp mirrors the Trakt /sync/watchlist response. `added` and
+// `existing` are counts per type; `not_found` echoes back items the server
+// couldn't match (we send by trakt id, so this should normally be empty).
+type SyncWatchlistResp struct {
+	Added struct {
+		Movies int `json:"movies"`
+		Shows  int `json:"shows"`
+	} `json:"added"`
+	Existing struct {
+		Movies int `json:"movies"`
+		Shows  int `json:"shows"`
+	} `json:"existing"`
+	NotFound struct {
+		Movies []interface{} `json:"movies"`
+		Shows  []interface{} `json:"shows"`
+	} `json:"not_found"`
+}
+
+// AddWatchlist POSTs items to /sync/watchlist. Server returns 201 on success
+// (even when every item is already on the list — those land under `existing`).
+func (c *APIClient) AddWatchlist(req *SyncWatchlistReq) (*SyncWatchlistResp, error) {
+	httpResp, err := c.doRequest(requestParams{
+		method: http.MethodPost,
+		path:   "/sync/watchlist",
+		body:   req,
+		auth:   true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode != 201 {
+		body, _ := io.ReadAll(httpResp.Body)
+		return nil, fmt.Errorf("add watchlist failed (%s): %s", httpResp.Status, string(body))
+	}
+
+	var resp SyncWatchlistResp
+	err = json.NewDecoder(httpResp.Body).Decode(&resp)
+	if err != nil {
+		return nil, err
+	}
+
+	return &resp, nil
+}
+
 func (c *APIClient) Search(query string, searchType string) ([]SearchResult, error) {
 	httpResp, err := c.doRequest(requestParams{
 		method: http.MethodGet,

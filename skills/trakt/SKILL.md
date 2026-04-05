@@ -1,9 +1,9 @@
 ---
 name: trakt
 description: |
-  Search movies/shows, view watch history, check watchlist, track progress, and mark items as watched on Trakt.tv.
+  Search movies/shows, view watch history, check and update the watchlist, track progress, and mark items as watched on Trakt.tv.
   Use when the user asks what they've been watching, what's on their watchlist, what's in progress,
-  wants to find a movie or show, mark something as watched, or asks about their Trakt activity.
+  wants to add or find a movie or show, mark something as watched, or asks about their Trakt activity.
 ---
 
 # Trakt Skill
@@ -40,6 +40,20 @@ trakt-cli watchlist --type movies --json
 - `--type`: filter by `movies` or `shows`
 - `--limit`: items per page (default 10)
 - `--page`: page number
+
+### Add to Watchlist
+
+```bash
+trakt-cli watchlist add "Severance" --json
+trakt-cli watchlist add "The Bear" "Shrinking" --json
+trakt-cli watchlist add --type movie "Oppenheimer" --json
+```
+
+- Searches by name, prefers exact title matches
+- `--type show` (default) or `--type movie`
+- Accepts multiple titles in one call
+- Duplicates are NOT an error — items already on the list come back under `existing_*` counts
+- JSON output: `{ "added_movies", "added_shows", "existing_movies", "existing_shows", "not_found_movies", "not_found_shows" }`
 
 ### Watch History
 
@@ -85,6 +99,7 @@ trakt-cli search "Inception" --type movie --json
 
 ## Changelog
 
+- **v2.1.0** — Add `watchlist add` command (`trakt_watchlist_add` tool) for adding movies/shows to the Trakt watchlist
 - **v2.0.0** — Add `progress` command, `--json` flag for all commands (agent-friendly output)
 - **v1.1.0** — Add `watchlist` command, `--type` filter for `history`, `history add` with `--watched-at`
 - **v1.0.0** — Initial skill (upstream `history` and `search` only)
