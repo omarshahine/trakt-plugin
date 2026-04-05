@@ -82,6 +82,24 @@ const TOOLS: ToolDef[] = [
 		}),
 	},
 	{
+		name: 'trakt_history_remove',
+		command: 'history',
+		subcommand: 'remove',
+		description:
+			'Remove movies or shows from Trakt.tv watch history (undo a mark-as-watched). Searches by title; removing a show wipes ALL its episode plays, removing a movie wipes all its watches. There is no per-watch granular removal.',
+		parameters: Type.Object({
+			titles: Type.Array(Type.String(), {
+				description: 'Title(s) to remove from history',
+				minItems: 1,
+			}),
+			type: Type.Optional(
+				Type.Union([Type.Literal('movie'), Type.Literal('show')], {
+					description: 'Content type (default: show)',
+				})
+			),
+		}),
+	},
+	{
 		name: 'trakt_watchlist',
 		command: 'watchlist',
 		description:
@@ -110,6 +128,43 @@ const TOOLS: ToolDef[] = [
 			type: Type.Optional(
 				Type.Union([Type.Literal('movie'), Type.Literal('show')], {
 					description: 'Content type (default: show)',
+				})
+			),
+		}),
+	},
+	{
+		name: 'trakt_watchlist_remove',
+		command: 'watchlist',
+		subcommand: 'remove',
+		description:
+			'Remove movies or shows from the Trakt.tv watchlist. Searches by title and removes matches in one sync call. Accepts multiple titles. Items that were not on the list are silent no-ops (deleted_*=0).',
+		parameters: Type.Object({
+			titles: Type.Array(Type.String(), {
+				description: 'Title(s) to remove from the watchlist',
+				minItems: 1,
+			}),
+			type: Type.Optional(
+				Type.Union([Type.Literal('movie'), Type.Literal('show')], {
+					description: 'Content type (default: show)',
+				})
+			),
+		}),
+	},
+	{
+		name: 'trakt_calendar',
+		command: 'calendar',
+		description:
+			'Show upcoming episodes of shows you watch. Returns forward-looking airings within a date window. Use for proactive "what airs next?" workflows — this is the only trakt tool that returns future data.',
+		parameters: Type.Object({
+			days: Type.Optional(
+				Type.Number({ description: 'Number of days to look ahead (default 7)' })
+			),
+			start: Type.Optional(
+				Type.String({ description: 'Start date YYYY-MM-DD (defaults to today)' })
+			),
+			new: Type.Optional(
+				Type.Boolean({
+					description: 'Only return series premieres (S01E01 airings)',
 				})
 			),
 		}),
@@ -226,10 +281,15 @@ function buildCliArgs(
 		}
 	}
 
-	// watchlist add: same title-array shape as history add, minus watched_at
-	// (the watchlist API has no "added at" field — Trakt assigns listed_at
-	// server-side at sync time).
-	if (command === 'watchlist' && subcommand === 'add') {
+	// Title-array commands (watchlist add/remove, history remove) all share
+	// the same shape: search by title, POST the matches. Only `history add`
+	// needs special handling for --watched-at.
+	const titleArrayCommands: Array<[string, string]> = [
+		['watchlist', 'add'],
+		['watchlist', 'remove'],
+		['history', 'remove'],
+	];
+	if (titleArrayCommands.some(([c, s]) => c === command && s === subcommand)) {
 		const titles = params.titles as string[] | undefined;
 		if (titles) {
 			if (params.type) args.push('--type', String(params.type));

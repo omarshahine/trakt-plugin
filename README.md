@@ -9,7 +9,7 @@
    ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝        ╚═════╝╚══════╝╚═╝
 ```
 
-A CLI and AI agent plugin for [Trakt.tv](https://trakt.tv) using the [Trakt API](https://trakt.docs.apiary.io/). Search movies and shows, view watch history, manage your watchlist (add + view), track show progress, and mark items as watched.
+A CLI and AI agent plugin for [Trakt.tv](https://trakt.tv) using the [Trakt API](https://trakt.docs.apiary.io/). Search movies and shows, view and manage your watchlist (add/remove), view and edit watch history (add/remove), track show progress, check the upcoming-episodes calendar, and mark items as watched.
 
 Ships as both a standalone Go CLI and as plugins for [OpenClaw](https://docs.openclaw.ai/) and [Claude Code](https://claude.ai/claude-code).
 
@@ -102,6 +102,19 @@ trakt-cli history add --watched-at 2025-06-15 "Dark" --json
 | `--type` | `show` or `movie` | `show` |
 | `--watched-at` | YYYY-MM-DD or RFC3339 | now |
 
+### history remove
+
+Undo a mark-as-watched. Removing a show wipes ALL its episode plays; removing a movie wipes all its watches. There is no per-watch granular removal — Trakt's API removes by trakt id, not by timestamp.
+
+```bash
+trakt-cli history remove "Severance" --json
+trakt-cli history remove --type movie "The Godfather" --json
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--type` | `show` or `movie` | `show` |
+
 ### watchlist
 
 View your watchlist.
@@ -132,6 +145,36 @@ trakt-cli watchlist add --type movie "Oppenheimer" --json
 |------|-------------|---------|
 | `--type` | `show` or `movie` | `show` |
 
+### watchlist remove
+
+Remove movies or shows from your watchlist. Searches by title. Items that were not on the list are silent no-ops (`deleted_*=0`, not an error).
+
+```bash
+trakt-cli watchlist remove "Severance" --json
+trakt-cli watchlist remove --type movie "Oppenheimer" --json
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--type` | `show` or `movie` | `show` |
+
+### calendar
+
+Show upcoming episodes of shows you watch. This is the only read command that returns **forward-looking** data — ideal for proactive "what airs next?" workflows.
+
+```bash
+trakt-cli calendar --json
+trakt-cli calendar --days 14 --json
+trakt-cli calendar --start 2026-04-10 --days 7 --json
+trakt-cli calendar --new --days 30 --json  # series premieres only
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--days` | Number of days to look ahead | 7 |
+| `--start` | Start date (YYYY-MM-DD) | today |
+| `--new` | Only series premieres (S01E01 airings) | off |
+
 ### progress
 
 Show watch progress for watchlist TV shows.
@@ -149,7 +192,7 @@ trakt-cli progress --all --json
 
 ### OpenClaw
 
-The `openclaw/` directory contains a native OpenClaw plugin that registers typed tools: `trakt_search`, `trakt_history`, `trakt_history_add`, `trakt_watchlist`, `trakt_watchlist_add`, `trakt_progress`, and `trakt_auth`.
+The `openclaw/` directory contains a native OpenClaw plugin that registers typed tools: `trakt_search`, `trakt_history`, `trakt_history_add`, `trakt_history_remove`, `trakt_watchlist`, `trakt_watchlist_add`, `trakt_watchlist_remove`, `trakt_calendar`, `trakt_progress`, and `trakt_auth`.
 
 Install from ClawHub:
 ```bash
