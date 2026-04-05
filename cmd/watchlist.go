@@ -28,9 +28,9 @@ var watchlistCmd = &cobra.Command{
 			s.Prefix = "Loading watchlist... "
 		}
 
-		settings, err := client.GetUserSettings()
+		slug, err := client.GetUserSlug()
 		if err != nil {
-			logrus.WithError(err).Fatal("Failed to get user settings")
+			logrus.WithError(err).Fatal("Failed to resolve trakt user")
 		}
 
 		page, err := cmd.Flags().GetInt("page")
@@ -46,7 +46,7 @@ var watchlistCmd = &cobra.Command{
 			logrus.WithError(err).Fatal("Failed to get type")
 		}
 
-		resp, pagination, err := client.GetUserWatchlist(settings.User.Ids.Slug, listType, api.PaginationsParams{
+		resp, pagination, err := client.GetUserWatchlist(slug, listType, api.PaginationsParams{
 			Page:  page,
 			Limit: limit,
 		})

@@ -29,9 +29,9 @@ var historyCmd = &cobra.Command{
 			s.Prefix = "Loading history... "
 		}
 
-		settings, err := client.GetUserSettings()
+		slug, err := client.GetUserSlug()
 		if err != nil {
-			logrus.WithError(err).Fatal("Failed to get user settings")
+			logrus.WithError(err).Fatal("Failed to resolve trakt user")
 		}
 
 		page, err := cmd.Flags().GetInt("page")
@@ -47,7 +47,7 @@ var historyCmd = &cobra.Command{
 			logrus.WithError(err).Fatal("Failed to get type")
 		}
 
-		resp, pagination, err := client.GetUserHistory(settings.User.Ids.Slug, historyType, api.PaginationsParams{
+		resp, pagination, err := client.GetUserHistory(slug, historyType, api.PaginationsParams{
 			Page:  page,
 			Limit: limit,
 		})

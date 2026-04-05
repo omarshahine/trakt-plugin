@@ -300,6 +300,37 @@ export default definePluginEntry({
 								: '';
 						const errorOutput = stderr ? `${message}\n\nstderr: ${stderr}` : message;
 
+						// Detect rate-limit markers emitted by the Go CLI's RateLimitError
+						// (see api/api.go). The CLI formats the error as:
+						//   rate limited by trakt api: <status> (path=<path> retry_after=<N>)
+						// Either stdout or stderr may carry it depending on how the CLI
+						// exited. Surface it as a structured response so the agent can
+						// back off instead of retrying.
+						const rateLimitMatch = errorOutput.match(
+							/rate limited by trakt api[^\n]*?retry_after=(\d+)/i
+						) || errorOutput.match(/rate limited by trakt api/i);
+						if (rateLimitMatch) {
+							const retryAfter = rateLimitMatch[1]
+								? parseInt(rateLimitMatch[1], 10)
+								: null;
+							return toolResult(
+								JSON.stringify(
+									{
+										success: false,
+										rate_limited: true,
+										retry_after_seconds: retryAfter,
+										error:
+											'Trakt API rate-limited this request' +
+											(retryAfter != null ? ` (retry after ~${retryAfter}s)` : '') +
+											'. Do NOT retry immediately — wait out the window before calling any trakt_* tool again, and avoid falling back to other trakt tools (they share the same rate limit bucket).',
+										raw: errorOutput,
+									},
+									null,
+									2
+								)
+							);
+						}
+
 						return toolResult(
 							JSON.stringify({ success: false, error: errorOutput }, null, 2)
 						);
