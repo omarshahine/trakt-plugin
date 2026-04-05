@@ -278,10 +278,17 @@ export default definePluginEntry({
 
 					try {
 						const args = buildCliArgs(tool.command, tool.subcommand, params, config);
+						// 30s was too tight for `progress`, which iterates ~50 API calls
+						// (watchlist + watched + N× GetShowProgress) and empirically runs
+						// 35-45s for users with substantial watch history. 120s gives
+						// generous headroom. maxBuffer bumped to 4MB to fit the full
+						// progress --all response (completed + in_progress + not_started).
+						// Follow-up: parallelize GetShowProgress loop or add a --filter
+						// flag so per-show progress checks don't hammer 50 API calls.
 						const { stdout } = await execFileAsync(cliPath, args, {
 							encoding: 'utf8',
-							timeout: 30_000,
-							maxBuffer: 1024 * 1024,
+							timeout: 120_000,
+							maxBuffer: 4 * 1024 * 1024,
 						});
 
 						let result: unknown;
