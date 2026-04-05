@@ -709,6 +709,177 @@ func (c *APIClient) AddWatchlist(req *SyncWatchlistReq) (*SyncWatchlistResp, err
 	return &resp, nil
 }
 
+// RemoveWatchlistResp mirrors POST /sync/watchlist/remove. Same shape as the
+// add response except `deleted` replaces `added`, and there's no `existing`
+// bucket (items not on the list are silently no-ops, counted as 0 deleted).
+type RemoveWatchlistResp struct {
+	Deleted struct {
+		Movies int `json:"movies"`
+		Shows  int `json:"shows"`
+	} `json:"deleted"`
+	NotFound struct {
+		Movies []interface{} `json:"movies"`
+		Shows  []interface{} `json:"shows"`
+	} `json:"not_found"`
+}
+
+// RemoveWatchlist POSTs items to /sync/watchlist/remove. Request body is
+// the same shape as SyncWatchlistReq — we reuse it rather than defining a
+// near-identical type.
+func (c *APIClient) RemoveWatchlist(req *SyncWatchlistReq) (*RemoveWatchlistResp, error) {
+	httpResp, err := c.doRequest(requestParams{
+		method: http.MethodPost,
+		path:   "/sync/watchlist/remove",
+		body:   req,
+		auth:   true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode != 200 {
+		body, _ := io.ReadAll(httpResp.Body)
+		return nil, fmt.Errorf("remove watchlist failed (%s): %s", httpResp.Status, string(body))
+	}
+
+	var resp RemoveWatchlistResp
+	err = json.NewDecoder(httpResp.Body).Decode(&resp)
+	if err != nil {
+		return nil, err
+	}
+
+	return &resp, nil
+}
+
+// RemoveHistoryResp mirrors POST /sync/history/remove. Trakt returns the
+// deleted counts under `deleted.{movies,episodes}` (not "shows" — removing
+// a show from history removes all its episodes, which get counted at the
+// episode grain).
+type RemoveHistoryResp struct {
+	Deleted struct {
+		Movies   int `json:"movies"`
+		Episodes int `json:"episodes"`
+	} `json:"deleted"`
+	NotFound struct {
+		Movies   []interface{} `json:"movies"`
+		Shows    []interface{} `json:"shows"`
+		Seasons  []interface{} `json:"seasons"`
+		Episodes []interface{} `json:"episodes"`
+		Ids      []interface{} `json:"ids"`
+	} `json:"not_found"`
+}
+
+// RemoveHistory POSTs items to /sync/history/remove. Request body is the
+// same shape as SyncHistoryReq (reused), but WatchedAt is ignored by the
+// server on the remove path — removing by trakt id removes ALL plays of
+// that item from history, not just the one at a given timestamp.
+func (c *APIClient) RemoveHistory(req *SyncHistoryReq) (*RemoveHistoryResp, error) {
+	httpResp, err := c.doRequest(requestParams{
+		method: http.MethodPost,
+		path:   "/sync/history/remove",
+		body:   req,
+		auth:   true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode != 200 {
+		body, _ := io.ReadAll(httpResp.Body)
+		return nil, fmt.Errorf("remove history failed (%s): %s", httpResp.Status, string(body))
+	}
+
+	var resp RemoveHistoryResp
+	err = json.NewDecoder(httpResp.Body).Decode(&resp)
+	if err != nil {
+		return nil, err
+	}
+
+	return &resp, nil
+}
+
+// CalendarEpisode is one entry from /calendars/my/shows. Each row is a
+// single episode airing on a specific date — a show with 3 new episodes
+// in the window produces 3 rows.
+type CalendarEpisode struct {
+	FirstAired time.Time `json:"first_aired"`
+	Episode    struct {
+		Season int    `json:"season"`
+		Number int    `json:"number"`
+		Title  string `json:"title"`
+		Ids    struct {
+			Trakt int    `json:"trakt"`
+			Tvdb  int    `json:"tvdb"`
+			Imdb  string `json:"imdb"`
+			Tmdb  int    `json:"tmdb"`
+		} `json:"ids"`
+	} `json:"episode"`
+	Show struct {
+		Title string `json:"title"`
+		Year  int    `json:"year"`
+		Ids   struct {
+			Trakt int    `json:"trakt"`
+			Slug  string `json:"slug"`
+			Tvdb  int    `json:"tvdb"`
+			Imdb  string `json:"imdb"`
+			Tmdb  int    `json:"tmdb"`
+		} `json:"ids"`
+	} `json:"show"`
+}
+
+// GetMyShowsCalendar returns upcoming episodes of shows the user watches,
+// over a window starting at `start` (YYYY-MM-DD) for `days` days. Pass an
+// empty start to default to today per Trakt's server-side default. When
+// `onlyNew` is true, hits /calendars/my/shows/new instead (series premieres
+// only — S01E01 airings).
+func (c *APIClient) GetMyShowsCalendar(start string, days int, onlyNew bool) ([]CalendarEpisode, error) {
+	base := "/calendars/my/shows"
+	if onlyNew {
+		base = "/calendars/my/shows/new"
+	}
+	path := base
+	// Trakt's URL shape is /calendars/my/shows[/new]/{start_date}/{days}.
+	// Both path segments are optional but must be supplied together — you
+	// can't specify days without start_date.
+	//
+	// Use LOCAL time (not UTC) for the default start date: a user in
+	// UTC+12 at 1 AM local is still on yesterday's UTC date, but from
+	// their perspective "today's calendar" means their local today, not
+	// UTC's today. Trakt treats the date string as a calendar date, so
+	// feeding it the user's local date is the right behavior.
+	if start == "" {
+		start = time.Now().Format("2006-01-02")
+	}
+	if days <= 0 {
+		days = 7
+	}
+	path = fmt.Sprintf("%s/%s/%d", path, start, days)
+
+	httpResp, err := c.doRequest(requestParams{
+		method: http.MethodGet,
+		path:   path,
+		auth:   true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode != 200 {
+		return nil, fmt.Errorf("failed to get calendar: %s", httpResp.Status)
+	}
+
+	var resp []CalendarEpisode
+	err = json.NewDecoder(httpResp.Body).Decode(&resp)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp, nil
+}
+
 func (c *APIClient) Search(query string, searchType string) ([]SearchResult, error) {
 	httpResp, err := c.doRequest(requestParams{
 		method: http.MethodGet,

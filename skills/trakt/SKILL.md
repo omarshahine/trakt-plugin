@@ -1,9 +1,9 @@
 ---
 name: trakt
 description: |
-  Search movies/shows, view watch history, check and update the watchlist, track progress, and mark items as watched on Trakt.tv.
-  Use when the user asks what they've been watching, what's on their watchlist, what's in progress,
-  wants to add or find a movie or show, mark something as watched, or asks about their Trakt activity.
+  Search movies/shows, view watch history, check and update the watchlist, track progress, view the upcoming-episodes calendar, and mark items as watched (or undo) on Trakt.tv.
+  Use when the user asks what they've been watching, what's on their watchlist, what's in progress, what airs next,
+  wants to add/remove a movie or show, mark something as watched, undo a watch, or asks about their Trakt activity.
 ---
 
 # Trakt Skill
@@ -55,6 +55,32 @@ trakt-cli watchlist add --type movie "Oppenheimer" --json
 - Duplicates are NOT an error — items already on the list come back under `existing_*` counts
 - JSON output: `{ "added_movies", "added_shows", "existing_movies", "existing_shows", "not_found_movies", "not_found_shows" }`
 
+### Remove from Watchlist
+
+```bash
+trakt-cli watchlist remove "Severance" --json
+trakt-cli watchlist remove --type movie "Oppenheimer" --json
+```
+
+- Symmetric inverse of `watchlist add`
+- Items not on the list are silent no-ops (`deleted_*=0`, not an error)
+- JSON output: `{ "deleted_movies", "deleted_shows", "not_found_movies", "not_found_shows" }`
+
+### Calendar (Upcoming Episodes)
+
+```bash
+trakt-cli calendar --json                    # next 7 days starting today
+trakt-cli calendar --days 14 --json          # next 14 days
+trakt-cli calendar --start 2026-04-10 --days 7 --json
+trakt-cli calendar --new --days 30 --json    # series premieres only
+```
+
+- **Only forward-looking trakt command** — use it whenever the user asks "when does X come back?" or "what's new this week?"
+- Covers shows already in the user's watchlist/history (Trakt derives "my shows" from these)
+- JSON output: `{ "items": [{ "first_aired", "show_title", "show_year", "show_trakt_id", "season", "episode", "title" }], "count" }`
+- One row per episode airing — a show with 3 new episodes in the window produces 3 rows
+- `--new` filters to series premieres only (S01E01 airings) — useful for "what's launching soon?"
+
 ### Watch History
 
 ```bash
@@ -81,6 +107,19 @@ trakt-cli history add --watched-at 2025-06-15 "Dark" --json
 - Accepts multiple titles in one call
 - JSON output: `{ "added_episodes": N, "added_movies": N, "not_found_movies": N, "not_found_shows": N }`
 
+### Undo Mark as Watched
+
+```bash
+trakt-cli history remove "Severance" --json
+trakt-cli history remove --type movie "The Godfather" --json
+```
+
+- Removes ALL plays of the matched item — there is no per-watch granular removal
+- Removing a show wipes all its episode plays; removing a movie wipes all its watches
+- `--type show` (default) or `--type movie`
+- JSON output: `{ "deleted_movies", "deleted_episodes", "not_found_movies", "not_found_shows" }`
+- **Warning:** destructive. Confirm with the user before calling on a show with heavy watch history
+
 ### Search
 
 ```bash
@@ -99,6 +138,7 @@ trakt-cli search "Inception" --type movie --json
 
 ## Changelog
 
+- **v2.2.0** — Add `watchlist remove`, `history remove`, and `calendar` commands (`trakt_watchlist_remove`, `trakt_history_remove`, `trakt_calendar` tools). Calendar unlocks forward-looking "what airs next?" workflows.
 - **v2.1.0** — Add `watchlist add` command (`trakt_watchlist_add` tool) for adding movies/shows to the Trakt watchlist
 - **v2.0.0** — Add `progress` command, `--json` flag for all commands (agent-friendly output)
 - **v1.1.0** — Add `watchlist` command, `--type` filter for `history`, `history add` with `--watched-at`
