@@ -122,3 +122,32 @@ jobs:
           npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish OpenClaw plugin to ClawHub
+        if: steps.semantic.outputs.new_release == 'true'
+        env:
+          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.semantic.outputs.new_tag }}
+        run: |
+          npx clawhub auth login --token "$CLAWHUB_TOKEN" --no-browser
+
+          VERSION=$(node -p "require('./openclaw/package.json').version")
+          COMMIT=$(git rev-parse HEAD)
+
+          # Pull changelog from the GitHub Release that semantic-release
+          # just created. Falls back to a generic message if the release
+          # body isn't available yet (race with GitHub API propagation).
+          CHANGELOG=$(gh release view "$RELEASE_TAG" --json body -q '.body' 2>/dev/null \
+            | head -c 4000 || echo "Release $VERSION")
+
+          npx clawhub package publish openclaw \
+            --family code-plugin \
+            --name "trakt-tools" \
+            --display-name "Trakt" \
+            --version "$VERSION" \
+            --changelog "$CHANGELOG" \
+            --tags "latest" \
+            --source-repo "omarshahine/trakt-plugin" \
+            --source-commit "$COMMIT" \
+            --source-ref "main" \
+            --source-path "openclaw"
