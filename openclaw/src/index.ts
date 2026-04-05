@@ -97,6 +97,24 @@ const TOOLS: ToolDef[] = [
 		}),
 	},
 	{
+		name: 'trakt_watchlist_add',
+		command: 'watchlist',
+		subcommand: 'add',
+		description:
+			'Add movies or shows to the Trakt.tv watchlist. Searches by title and queues matches in one sync call. Accepts multiple titles. Items already on the list are reported under `existing_*` counts.',
+		parameters: Type.Object({
+			titles: Type.Array(Type.String(), {
+				description: 'Title(s) to add to the watchlist',
+				minItems: 1,
+			}),
+			type: Type.Optional(
+				Type.Union([Type.Literal('movie'), Type.Literal('show')], {
+					description: 'Content type (default: show)',
+				})
+			),
+		}),
+	},
+	{
 		name: 'trakt_progress',
 		command: 'progress',
 		description:
@@ -200,6 +218,21 @@ function buildCliArgs(
 		if (titles) {
 			if (params.type) args.push('--type', String(params.type));
 			if (params.watched_at) args.push('--watched-at', String(params.watched_at));
+			for (const title of titles) {
+				args.push(title);
+			}
+			args.push('--json');
+			return args;
+		}
+	}
+
+	// watchlist add: same title-array shape as history add, minus watched_at
+	// (the watchlist API has no "added at" field — Trakt assigns listed_at
+	// server-side at sync time).
+	if (command === 'watchlist' && subcommand === 'add') {
+		const titles = params.titles as string[] | undefined;
+		if (titles) {
+			if (params.type) args.push('--type', String(params.type));
 			for (const title of titles) {
 				args.push(title);
 			}
