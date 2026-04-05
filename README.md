@@ -9,7 +9,7 @@
    ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝        ╚═════╝╚══════╝╚═╝
 ```
 
-A CLI and AI agent plugin for [Trakt.tv](https://trakt.tv) using the [Trakt API](https://trakt.docs.apiary.io/). Search movies and shows, view watch history, manage your watchlist, track show progress, and mark items as watched.
+A CLI and AI agent plugin for [Trakt.tv](https://trakt.tv) using the [Trakt API](https://trakt.docs.apiary.io/). Search movies and shows, view watch history, manage your watchlist (add + view), track show progress, and mark items as watched.
 
 Ships as both a standalone Go CLI and as plugins for [OpenClaw](https://docs.openclaw.ai/) and [Claude Code](https://claude.ai/claude-code).
 
@@ -118,6 +118,20 @@ trakt-cli watchlist --type movies --json
 | `--limit` | Items per page | 10 |
 | `--page` | Page number | 1 |
 
+### watchlist add
+
+Add movies or shows to your watchlist. Searches by title and prefers exact matches. Items already on the list are reported under `existing_*` counts (not an error).
+
+```bash
+trakt-cli watchlist add "Severance" --json
+trakt-cli watchlist add "The Bear" "Shrinking" --json
+trakt-cli watchlist add --type movie "Oppenheimer" --json
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--type` | `show` or `movie` | `show` |
+
 ### progress
 
 Show watch progress for watchlist TV shows.
@@ -135,7 +149,7 @@ trakt-cli progress --all --json
 
 ### OpenClaw
 
-The `openclaw/` directory contains a native OpenClaw plugin that registers typed tools: `trakt_search`, `trakt_history`, `trakt_history_add`, `trakt_watchlist`, `trakt_progress`, and `trakt_auth`.
+The `openclaw/` directory contains a native OpenClaw plugin that registers typed tools: `trakt_search`, `trakt_history`, `trakt_history_add`, `trakt_watchlist`, `trakt_watchlist_add`, `trakt_progress`, and `trakt_auth`.
 
 Install from ClawHub:
 ```bash
