@@ -29,46 +29,34 @@ openclaw plugins install -l ./openclaw
 
 The OpenClaw plugin is published as `trakt-tools` on ClawHub.
 
-### Prerequisites
+### Automated (CI)
 
-- `clawhub` CLI installed: `npm install -g clawhub`
-- Authenticated: `clawhub login` (browser OAuth flow)
-- Verify: `clawhub whoami`
-- `openclaw/package.json` must have `openclaw.compat.pluginApi` and `openclaw.build.openclawVersion` fields
+Publishing is automated via GitHub Actions (`.github/workflows/publish-clawhub.yml`). To publish a new version:
 
-### Publish Script (preferred)
+```bash
+# 1. Bump version in openclaw/package.json
+# 2. Commit and push
+# 3. Tag and push the tag
+git tag -a v1.9.0 -m "Description of changes"
+git push origin v1.9.0
+```
+
+The workflow extracts the version from the tag name and the changelog from the tag annotation. It publishes the `openclaw/` subdirectory to ClawHub. Authenticates with the `CLAWHUB_TOKEN` repository secret.
+
+**Note**: The existing `push.yml` workflow handles semantic-release, GoReleaser, and npm publish. The `publish-clawhub.yml` workflow runs separately on version tags.
+
+### Manual (fallback)
 
 ```bash
 ./publish-clawhub.sh --changelog "summary of changes"
 ```
 
-The script extracts the version from `openclaw/package.json`, gets the current git SHA, and calls `clawhub package publish` with all required flags. If `--changelog` is omitted, it prompts interactively.
+Requires `clawhub` CLI installed (`npm install -g clawhub`) and authenticated (`clawhub login`).
 
-### Manual Publish Command
-
-```bash
-clawhub package publish ./openclaw \
-  --family code-plugin \
-  --name "trakt-tools" \
-  --display-name "Trakt" \
-  --version <VERSION> \
-  --changelog "<description of changes>" \
-  --tags "latest" \
-  --source-repo "omarshahine/trakt-plugin" \
-  --source-commit $(git rev-parse HEAD) \
-  --source-ref "main" \
-  --source-path "openclaw"
-```
-
-### Verify Publication
+### Verify / Install
 
 ```bash
 clawhub package inspect trakt-tools
-```
-
-### Install (end user)
-
-```bash
 openclaw plugins install trakt-tools
 ```
 
