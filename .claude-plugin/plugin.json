@@ -1,8 +1,10 @@
 {
   "name": "trakt",
-  "version": "1.8.0",
+  "version": "1.8.1",
   "description": "Track movies and TV shows using trakt.tv CLI",
-  "author": { "name": "Omar Shahine" },
+  "author": {
+    "name": "Omar Shahine"
+  },
   "license": "MIT",
   "repository": "https://github.com/omarshahine/trakt-plugin"
 }
