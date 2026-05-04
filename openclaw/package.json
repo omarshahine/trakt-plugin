@@ -1,6 +1,6 @@
 {
   "name": "trakt-tools",
-  "version": "1.8.5",
+  "version": "1.8.6",
   "description": "OpenClaw plugin for Trakt.tv - track movies and TV shows",
   "type": "module",
   "openclaw": {
@@ -15,9 +15,10 @@
     }
   },
   "files": [
-    "src/",
+    "dist/",
+    "openclaw.plugin.json",
     "skills/",
-    "openclaw.plugin.json"
+    "src/"
   ],
   "keywords": [
     "openclaw",
@@ -53,6 +54,9 @@
   },
   "scripts": {
     "plugin:check": "npx --yes @openclaw/plugin-inspector inspect --no-openclaw",
-    "plugin:ci": "npx --yes @openclaw/plugin-inspector ci --no-openclaw --runtime --mock-sdk --allow-execute"
-  }
+    "plugin:ci": "npx --yes @openclaw/plugin-inspector ci --no-openclaw --runtime --mock-sdk --allow-execute",
+    "build": "tsc",
+    "prepare": "test -d dist || npm run build"
+  },
+  "main": "./dist/src/index.js"
 }
