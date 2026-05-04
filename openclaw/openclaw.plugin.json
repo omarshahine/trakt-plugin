@@ -2,7 +2,7 @@
   "id": "trakt-tools",
   "name": "Trakt",
   "description": "Track movies and TV shows using trakt.tv",
-  "version": "1.8.4",
+  "version": "1.8.1",
   "configSchema": {
     "type": "object",
     "properties": {
@@ -38,5 +38,19 @@
       "help": "Trakt API client secret from https://trakt.tv/oauth/applications",
       "sensitive": true
     }
+  },
+  "contracts": {
+    "tools": [
+      "trakt_search",
+      "trakt_history",
+      "trakt_history_add",
+      "trakt_history_remove",
+      "trakt_watchlist",
+      "trakt_watchlist_add",
+      "trakt_watchlist_remove",
+      "trakt_calendar",
+      "trakt_progress",
+      "trakt_auth"
+    ]
   }
 }
