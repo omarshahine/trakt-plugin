@@ -2,7 +2,7 @@
   "id": "trakt-tools",
   "name": "Trakt",
   "description": "Track movies and TV shows using trakt.tv",
-  "version": "1.8.9",
+  "version": "1.8.10",
   "configSchema": {
     "type": "object",
     "properties": {

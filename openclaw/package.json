@@ -1,6 +1,6 @@
 {
   "name": "trakt-tools",
-  "version": "1.8.9",
+  "version": "1.8.10",
   "description": "OpenClaw plugin for Trakt.tv - track movies and TV shows",
   "type": "module",
   "openclaw": {
