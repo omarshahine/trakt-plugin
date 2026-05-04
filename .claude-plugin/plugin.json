@@ -1,6 +1,6 @@
 {
   "name": "trakt",
-  "version": "1.8.4",
+  "version": "1.8.6",
   "description": "Track movies and TV shows using trakt.tv CLI",
   "author": {
     "name": "Omar Shahine"

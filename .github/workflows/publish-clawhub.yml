@@ -40,6 +40,12 @@ jobs:
           fi
           echo "text=$MSG" >> "$GITHUB_OUTPUT"
 
+      - name: Install + build (compile TS so clawhub validator finds dist/)
+        run: |
+          cd openclaw
+          npm install
+          npm run build
+
       - name: Publish to ClawHub
         run: |
           clawhub package publish openclaw \
