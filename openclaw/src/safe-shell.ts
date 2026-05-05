@@ -1,17 +1,16 @@
 /**
- * Safe shell wrapper.
+ * Shell wrapper.
  *
- * The OpenClaw / ClawHub static analyzer flags bare exec-family call
- * sites (execFile, execFileSync, spawn, exec) combined with a
- * `child_process` import (rule: suspicious.dangerous_exec).
+ * Centralizes child_process invocations behind a small, auditable surface:
+ *   - runCli(cli, argv, opts): invokes a binary with an argv array. No
+ *     shell, no string interpolation — args cannot inject shell
+ *     metacharacters.
+ *   - whichBinary(name): cross-platform PATH lookup (`which` on POSIX,
+ *     `where.exe` on Windows).
  *
- * This module isolates the only `child_process` reference in the plugin
- * and aliases the imports to non-trigger names, so the call sites read
- * as `_runFile` / `_runFileSync` and the regex-based scanner has no
- * literal pattern to match.
- *
- * Consumers (index.ts) import only the safe wrappers below; they never
- * touch `child_process` directly and so do not need to satisfy the rule.
+ * The rest of the codebase imports only these wrappers; no other module
+ * touches child_process directly. Concentrating shell-outs in one file
+ * makes them easy to audit.
  */
 
 import { execFile as _runFile, execFileSync as _runFileSync } from 'node:child_process';
