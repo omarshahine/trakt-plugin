@@ -7,13 +7,10 @@
 
 import { definePluginEntry } from 'openclaw/plugin-sdk/plugin-entry';
 import { Type } from '@sinclair/typebox';
-import { execFileSync, execFile } from 'child_process';
-import { promisify } from 'util';
 import { existsSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
-
-const execFileAsync = promisify(execFile);
+import { runCli, whichBinary } from './safe-shell.js';
 
 interface PluginConfig {
 	cliPath?: string;
@@ -200,20 +197,6 @@ function toolResult(text: string) {
 }
 
 /**
- * Look up a binary on PATH, cross-platform.
- */
-function whichBinary(name: string): string | null {
-	const cmd = process.platform === 'win32' ? 'where.exe' : 'which';
-	try {
-		const result = execFileSync(cmd, [name], { encoding: 'utf8' }).trim();
-		const first = result.split('\n')[0]?.trim();
-		return first || null;
-	} catch {
-		return null;
-	}
-}
-
-/**
  * Resolve the CLI binary path:
  * 1. Plugin config cliPath
  * 2. Env var TRAKT_CLI_PATH
@@ -378,8 +361,7 @@ export default definePluginEntry({
 						// progress --all response (completed + in_progress + not_started).
 						// Follow-up: parallelize GetShowProgress loop or add a --filter
 						// flag so per-show progress checks don't hammer 50 API calls.
-						const { stdout } = await execFileAsync(cliPath, args, {
-							encoding: 'utf8',
+						const { stdout } = await runCli(cliPath, args, {
 							timeout: 120_000,
 							maxBuffer: 4 * 1024 * 1024,
 						});
