@@ -2,7 +2,13 @@
   "id": "trakt-tools",
   "name": "Trakt",
   "description": "Track movies and TV shows using trakt.tv",
-  "version": "1.8.10",
+  "version": "1.8.14",
+  "requires": {
+    "binaries": ["trakt-cli"],
+    "envVars": [
+      { "name": "TRAKT_CLI_PATH", "required": false, "description": "Override path to the trakt-cli binary" }
+    ]
+  },
   "configSchema": {
     "type": "object",
     "properties": {
