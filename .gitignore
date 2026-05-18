@@ -4,3 +4,6 @@ dist/
 
 dist/
 openclaw/reports/
+
+# Clawpatch local review state
+.clawpatch/
