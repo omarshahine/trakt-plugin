@@ -27,6 +27,11 @@ type Credentials struct {
 	ClientID     string `yaml:"client-id"`
 	ClientSecret string `yaml:"client-secret"`
 	AccessToken  string `yaml:"access-token"`
+	// RefreshToken persists the long-lived OAuth refresh token from the
+	// device-code flow so `trakt-cli refresh` (and the doRequest 401
+	// auto-refresh path) can mint new access tokens without re-running
+	// the device-code dance. Kept in sync with api.Credentials.
+	RefreshToken string `yaml:"refresh-token,omitempty"`
 	// UserSlug is populated post-auth by fetching /users/settings once so
 	// subsequent read commands can use the cached value without a round-trip.
 	// Kept in sync with api.Credentials — see api/api.go.
@@ -95,6 +100,7 @@ var authCmd = &cobra.Command{
 					ClientID:     clientID,
 					ClientSecret: clientSecret,
 					AccessToken:  tokenResp.AccessToken,
+					RefreshToken: tokenResp.RefreshToken,
 				}
 
 				// Prime the user-slug cache: fetch /users/settings once now so
@@ -106,6 +112,7 @@ var authCmd = &cobra.Command{
 					ClientID:     creds.ClientID,
 					ClientSecret: creds.ClientSecret,
 					AccessToken:  creds.AccessToken,
+					RefreshToken: creds.RefreshToken,
 				})
 				if settings, slugErr := primerClient.GetUserSettings(); slugErr == nil {
 					creds.UserSlug = settings.User.Ids.Slug
