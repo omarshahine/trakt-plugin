@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -28,6 +29,12 @@ type Credentials struct {
 	ClientID     string `yaml:"client-id"`
 	ClientSecret string `yaml:"client-secret"`
 	AccessToken  string `yaml:"access-token"`
+	// RefreshToken is the long-lived OAuth refresh token returned alongside
+	// AccessToken by the device-code flow. Used by RefreshAccessToken() to
+	// mint a new access token without re-running the device-code dance.
+	// Trakt rotates the refresh token on each refresh, so writeCredentials()
+	// re-persists both fields after every successful refresh.
+	RefreshToken string `yaml:"refresh-token,omitempty"`
 	// UserSlug caches the authenticated user's slug so read-only commands
 	// (watchlist, history, progress) don't have to re-fetch /users/settings
 	// on every invocation. Populated by GetUserSlug() on first use and
@@ -108,6 +115,90 @@ type requestParams struct {
 	auth       bool
 	pagination PaginationsParams
 	query      map[string]string
+	// noAutoRefresh skips the 401 auto-refresh-and-retry path. Set by
+	// RefreshAccessToken() to prevent infinite recursion when the refresh
+	// call itself is rejected. doRequest sets `auth: false` for the refresh
+	// path too, so this is belt-and-suspenders.
+	noAutoRefresh bool
+}
+
+// OAuthRefreshReq is the body of POST /oauth/token with grant_type=refresh_token.
+// Trakt requires redirect_uri (the documented value for first-party clients).
+type OAuthRefreshReq struct {
+	RefreshToken string `json:"refresh_token"`
+	ClientID     string `json:"client_id"`
+	ClientSecret string `json:"client_secret"`
+	RedirectURI  string `json:"redirect_uri"`
+	GrantType    string `json:"grant_type"`
+}
+
+// OAuthRefreshResp matches the AuthDeviceTokenResp shape — Trakt returns the
+// same envelope for device-code, refresh, and exchange grants.
+type OAuthRefreshResp struct {
+	AccessToken  string `json:"access_token"`
+	TokenType    string `json:"token_type"`
+	ExpiresIn    int    `json:"expires_in"`
+	RefreshToken string `json:"refresh_token"`
+	Scope        string `json:"scope"`
+	CreatedAt    int    `json:"created_at"`
+}
+
+// RefreshAccessToken exchanges c.Credentials.RefreshToken for a fresh access
+// token (and a new rotated refresh token) via POST /oauth/token, mutates
+// c.Credentials in place, and persists the new pair to ~/.trakt.yaml.
+//
+// Returns an error if no refresh token is stored, the API rejects the refresh
+// (e.g. the user revoked the app in Trakt's Connected Apps UI), or persistence
+// fails. On success the next doRequest call uses the new bearer.
+func (c *APIClient) RefreshAccessToken() error {
+	if c.Credentials.RefreshToken == "" {
+		return fmt.Errorf("no refresh token stored; run `trakt-cli auth` to bootstrap")
+	}
+
+	body := OAuthRefreshReq{
+		RefreshToken: c.Credentials.RefreshToken,
+		ClientID:     c.Credentials.ClientID,
+		ClientSecret: c.Credentials.ClientSecret,
+		// Documented value for first-party device-code clients.
+		RedirectURI: "urn:ietf:wg:oauth:2.0:oob",
+		GrantType:   "refresh_token",
+	}
+
+	resp, err := c.doRequest(requestParams{
+		method:        http.MethodPost,
+		path:          "/oauth/token",
+		body:          body,
+		auth:          false,
+		noAutoRefresh: true,
+	})
+	if err != nil {
+		return fmt.Errorf("refresh request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		// Drain enough of the body to surface Trakt's error envelope without
+		// dumping a giant HTML page in the unlikely 5xx-from-edge case.
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return fmt.Errorf("refresh rejected (%s): %s", resp.Status, strings.TrimSpace(string(snippet)))
+	}
+
+	var fresh OAuthRefreshResp
+	if err := json.NewDecoder(resp.Body).Decode(&fresh); err != nil {
+		return fmt.Errorf("refresh response decode: %w", err)
+	}
+	if fresh.AccessToken == "" {
+		return fmt.Errorf("refresh response missing access_token")
+	}
+
+	c.Credentials.AccessToken = fresh.AccessToken
+	if fresh.RefreshToken != "" {
+		// Trakt rotates the refresh token on every refresh — must persist the
+		// new one or the next refresh fails with invalid_grant.
+		c.Credentials.RefreshToken = fresh.RefreshToken
+	}
+	c.writeCredentials()
+	return nil
 }
 
 func (c *APIClient) doRequest(params requestParams) (*http.Response, error) {
@@ -166,6 +257,35 @@ func (c *APIClient) doRequest(params requestParams) (*http.Response, error) {
 			RetryAfterSeconds: retryAfter,
 			Status:            resp.Status,
 		}
+	}
+
+	// Auto-refresh on 401: if the access token expired (or was revoked) and
+	// we have a refresh token, refresh once and retry. This is best-effort —
+	// the original 401 is returned if refresh fails for any reason, so the
+	// caller sees a normal auth failure instead of a silent retry loop.
+	// Only fires when this call carried auth headers, has a refresh token,
+	// and isn't itself the refresh call (noAutoRefresh).
+	if resp.StatusCode == http.StatusUnauthorized &&
+		params.auth &&
+		!params.noAutoRefresh &&
+		c.Credentials.RefreshToken != "" {
+		resp.Body.Close()
+		if refreshErr := c.RefreshAccessToken(); refreshErr != nil {
+			logrus.WithError(refreshErr).Warn("trakt-cli: 401 on " + params.path + " and refresh failed; returning original auth error")
+			// Re-issue the original request to get back a clean 401 response
+			// for the caller to interpret. Recurse with noAutoRefresh to avoid
+			// loops if the refresh somehow partially succeeded.
+			retryParams := params
+			retryParams.noAutoRefresh = true
+			return c.doRequest(retryParams)
+		}
+		// Refresh succeeded — retry the original request once with the new
+		// bearer. Set noAutoRefresh so we don't recurse if the new token is
+		// somehow also rejected (extremely rare; means Trakt revoked the
+		// account, not the token).
+		retryParams := params
+		retryParams.noAutoRefresh = true
+		return c.doRequest(retryParams)
 	}
 
 	return resp, nil
