@@ -44,6 +44,8 @@ echo "  Commit: $COMMIT"
 echo "  Changelog: $CHANGELOG"
 echo ""
 
+(cd "$PKG_DIR" && npm install && npm run build)
+
 clawhub package publish "$PKG_DIR" \
   --family code-plugin \
   --name "trakt-tools" \
