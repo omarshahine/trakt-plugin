@@ -279,11 +279,13 @@ var historyAddCmd = &cobra.Command{
 				}
 				if matchedAny {
 					_ = enc.Encode(map[string]interface{}{
-						"added_movies":     0,
-						"added_episodes":   0,
-						"not_found_movies": 0,
-						"not_found_shows":  0,
-						"shows":            showResults,
+						"added_movies":       0,
+						"added_episodes":     0,
+						"not_found_movies":   0,
+						"not_found_shows":    0,
+						"not_found_seasons":  0,
+						"not_found_episodes": 0,
+						"shows":              showResults,
 					})
 				} else {
 					fmt.Println("{\"error\": \"no items matched\"}")
