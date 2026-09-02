@@ -83,6 +83,11 @@ func abortOnRateLimit(err error) {
 	if !errors.As(err, &rlErr) {
 		return
 	}
+	// The marker line must also reach stderr: wrappers like the bundled
+	// OpenClaw tool build their error output from message + stderr on a
+	// nonzero exit and match the RateLimitError format to start backing
+	// off — stdout-only markers never reach that detector.
+	fmt.Fprintln(os.Stderr, rlErr.Error())
 	if jsonOutput {
 		enc := json.NewEncoder(os.Stdout)
 		payload := map[string]interface{}{"error": rlErr.Error()}
