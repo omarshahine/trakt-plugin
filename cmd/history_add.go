@@ -142,6 +142,11 @@ var historyAddCmd = &cobra.Command{
 		syncReq := &api.SyncHistoryReq{}
 		var showResults []historyAddShowResult
 		var skippedShows []historyAddSkippedShow
+		// Two arguments can resolve to the same show (repeated title or an
+		// alias); each lookup would see the same pre-sync history and queue
+		// the same pending episodes, so the sync would create two plays per
+		// episode. Handle every show at most once per invocation.
+		queuedShows := make(map[int]string)
 		matchedAny := false
 
 		t := table.NewWriter()
@@ -207,6 +212,16 @@ var historyAddCmd = &cobra.Command{
 					result.Movie.Ids.Trakt,
 				})
 			} else if result.Show != nil {
+				if firstQuery, dup := queuedShows[result.Show.Ids.Trakt]; dup {
+					p := termenv.ColorProfile()
+					t.AppendRow([]interface{}{
+						query,
+						result.Show.Title,
+						result.Show.Year,
+						termenv.String(fmt.Sprintf("duplicate of %q", firstQuery)).Foreground(p.Color("#FF6B6B")),
+					})
+					continue
+				}
 				// Narrow the sync to aired episodes the user has not
 				// watched yet: a bare show item makes Trakt add a new play
 				// for every aired episode, including ones already watched.
@@ -228,6 +243,7 @@ var historyAddCmd = &cobra.Command{
 					})
 					continue
 				}
+				queuedShows[result.Show.Ids.Trakt] = query
 				res := historyAddShowResult{
 					Query:                  query,
 					Matched:                result.Show.Title,
