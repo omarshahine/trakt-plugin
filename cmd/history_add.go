@@ -23,6 +23,14 @@ type historyAddShowResult struct {
 	AlreadyWatchedEpisodes int    `json:"already_watched_episodes"`
 }
 
+// historyAddSkippedShow reports a matched show whose pending episodes could
+// not be resolved, so nothing was synced for it.
+type historyAddSkippedShow struct {
+	Query string `json:"query"`
+	Show  string `json:"show"`
+	Error string `json:"error"`
+}
+
 // filterPendingEpisodes returns the aired episodes that are not in watched,
 // grouped as sync seasons, plus how many aired episodes were already
 // watched. Episodes without a first_aired date in the past count as unaired
@@ -101,6 +109,7 @@ var historyAddCmd = &cobra.Command{
 
 		syncReq := &api.SyncHistoryReq{}
 		var showResults []historyAddShowResult
+		var skippedShows []historyAddSkippedShow
 		matchedAny := false
 
 		t := table.NewWriter()
@@ -172,7 +181,11 @@ var historyAddCmd = &cobra.Command{
 				if err != nil {
 					logrus.WithError(err).Warnf("Skipping %s: could not resolve pending episodes", result.Show.Title)
 					p := termenv.ColorProfile()
-					matchedAny = true
+					skippedShows = append(skippedShows, historyAddSkippedShow{
+						Query: query,
+						Show:  result.Show.Title,
+						Error: err.Error(),
+					})
 					t.AppendRow([]interface{}{
 						query,
 						result.Show.Title,
@@ -223,6 +236,13 @@ var historyAddCmd = &cobra.Command{
 			if jsonOutput {
 				enc := json.NewEncoder(os.Stdout)
 				enc.SetIndent("", "  ")
+				if len(skippedShows) > 0 {
+					_ = enc.Encode(map[string]interface{}{
+						"error":         "pending episode lookup failed",
+						"skipped_shows": skippedShows,
+					})
+					os.Exit(1)
+				}
 				if matchedAny {
 					_ = enc.Encode(map[string]interface{}{
 						"added_movies":     0,
@@ -235,6 +255,10 @@ var historyAddCmd = &cobra.Command{
 					fmt.Println("{\"error\": \"no items matched\"}")
 				}
 				return
+			}
+			if len(skippedShows) > 0 {
+				fmt.Println("\nFailed to resolve pending episodes; nothing added.")
+				os.Exit(1)
 			}
 			if matchedAny {
 				fmt.Println("\nNo new episodes to add.")
@@ -261,19 +285,26 @@ var historyAddCmd = &cobra.Command{
 		if jsonOutput {
 			enc := json.NewEncoder(os.Stdout)
 			enc.SetIndent("", "  ")
-			_ = enc.Encode(map[string]interface{}{
+			payload := map[string]interface{}{
 				"added_movies":     resp.Added.Movies,
 				"added_episodes":   resp.Added.Episodes,
 				"not_found_movies": len(resp.NotFound.Movies),
 				"not_found_shows":  len(resp.NotFound.Shows),
 				"shows":            showResults,
-			})
+			}
+			if len(skippedShows) > 0 {
+				payload["skipped_shows"] = skippedShows
+			}
+			_ = enc.Encode(payload)
 			return
 		}
 
 		fmt.Printf("Added: %d movies, %d episodes\n", resp.Added.Movies, resp.Added.Episodes)
 		if len(resp.NotFound.Movies) > 0 || len(resp.NotFound.Shows) > 0 {
 			fmt.Printf("Not found: %d movies, %d shows\n", len(resp.NotFound.Movies), len(resp.NotFound.Shows))
+		}
+		if len(skippedShows) > 0 {
+			fmt.Printf("Skipped (could not resolve pending episodes): %d shows\n", len(skippedShows))
 		}
 	},
 }
