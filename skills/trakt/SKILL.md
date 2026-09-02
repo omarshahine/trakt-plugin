@@ -102,10 +102,13 @@ trakt-cli history add --watched-at 2025-06-15 "Dark" --json
 ```
 
 - Searches by name, prefers exact title matches
+- For shows, only episodes that have aired **and** are not yet in your
+  history are added: catching up on a partially watched show never creates
+  duplicate plays, and a fully caught-up show adds nothing
 - `--type show` (default) or `--type movie`
 - `--watched-at`: RFC3339 or YYYY-MM-DD (defaults to now)
 - Accepts multiple titles in one call
-- JSON output: `{ "added_episodes": N, "added_movies": N, "not_found_movies": N, "not_found_shows": N }`
+- JSON output: `{ "added_episodes": N, "added_movies": N, "not_found_movies": N, "not_found_shows": N, "shows": [{ "query", "matched", "new_episodes", "already_watched_episodes" }] }`
 
 ### Undo Mark as Watched
 

@@ -15,6 +15,55 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// historyAddShowResult reports what a single show query would add.
+type historyAddShowResult struct {
+	Query                  string `json:"query"`
+	Matched                string `json:"matched,omitempty"`
+	NewEpisodes            int    `json:"new_episodes"`
+	AlreadyWatchedEpisodes int    `json:"already_watched_episodes"`
+}
+
+// filterPendingEpisodes returns the aired episodes that are not in watched,
+// grouped as sync seasons, plus how many aired episodes were already
+// watched. Episodes without a first_aired date in the past count as unaired
+// and are never included.
+func filterPendingEpisodes(seasons []api.ShowSeason, watched map[string]bool, now time.Time) ([]api.SyncSeason, int) {
+	var pending []api.SyncSeason
+	watchedCount := 0
+	for _, s := range seasons {
+		var eps []api.SyncEpisode
+		for _, e := range s.Episodes {
+			if e.FirstAired == nil || e.FirstAired.After(now) {
+				continue
+			}
+			if watched[fmt.Sprintf("%d:%d", s.Number, e.Number)] {
+				watchedCount++
+				continue
+			}
+			eps = append(eps, api.SyncEpisode{Number: e.Number})
+		}
+		if len(eps) > 0 {
+			pending = append(pending, api.SyncSeason{Number: s.Number, Episodes: eps})
+		}
+	}
+	return pending, watchedCount
+}
+
+// pendingEpisodesForShow wraps filterPendingEpisodes with the show's seasons
+// and the user's watched episode set.
+func pendingEpisodesForShow(client *api.APIClient, showID int) ([]api.SyncSeason, int, error) {
+	watched, err := client.WatchedEpisodeSet(showID)
+	if err != nil {
+		return nil, 0, err
+	}
+	seasons, err := client.GetShowSeasons(showID)
+	if err != nil {
+		return nil, 0, err
+	}
+	pending, watchedCount := filterPendingEpisodes(seasons, watched, time.Now())
+	return pending, watchedCount, nil
+}
+
 var historyAddCmd = &cobra.Command{
 	Use:   "add [show or movie names...]",
 	Short: "Add items to your watch history",
@@ -51,6 +100,8 @@ var historyAddCmd = &cobra.Command{
 		s := spinner.New(spinner.CharSets[2], 100*time.Millisecond)
 
 		syncReq := &api.SyncHistoryReq{}
+		var showResults []historyAddShowResult
+		matchedAny := false
 
 		t := table.NewWriter()
 		t.SetOutputMirror(os.Stdout)
@@ -106,6 +157,7 @@ var historyAddCmd = &cobra.Command{
 			if searchType == "movie" && result.Movie != nil {
 				item.Ids.Trakt = result.Movie.Ids.Trakt
 				syncReq.Movies = append(syncReq.Movies, item)
+				matchedAny = true
 				t.AppendRow([]interface{}{
 					query,
 					result.Movie.Title,
@@ -113,8 +165,46 @@ var historyAddCmd = &cobra.Command{
 					result.Movie.Ids.Trakt,
 				})
 			} else if result.Show != nil {
+				// Narrow the sync to aired episodes the user has not
+				// watched yet: a bare show item makes Trakt add a new play
+				// for every aired episode, including ones already watched.
+				pending, watchedCount, err := pendingEpisodesForShow(&client, result.Show.Ids.Trakt)
+				if err != nil {
+					logrus.WithError(err).Warnf("Skipping %s: could not resolve pending episodes", result.Show.Title)
+					p := termenv.ColorProfile()
+					matchedAny = true
+					t.AppendRow([]interface{}{
+						query,
+						result.Show.Title,
+						result.Show.Year,
+						termenv.String("SKIPPED").Foreground(p.Color("#FF6B6B")),
+					})
+					continue
+				}
+				res := historyAddShowResult{
+					Query:                  query,
+					Matched:                result.Show.Title,
+					AlreadyWatchedEpisodes: watchedCount,
+				}
+				for _, s := range pending {
+					res.NewEpisodes += len(s.Episodes)
+				}
+				if len(pending) == 0 {
+					matchedAny = true
+					t.AppendRow([]interface{}{
+						query,
+						result.Show.Title,
+						result.Show.Year,
+						fmt.Sprintf("already watched (%d eps)", watchedCount),
+					})
+					showResults = append(showResults, res)
+					continue
+				}
 				item.Ids.Trakt = result.Show.Ids.Trakt
+				item.Seasons = pending
 				syncReq.Shows = append(syncReq.Shows, item)
+				matchedAny = true
+				showResults = append(showResults, res)
 				t.AppendRow([]interface{}{
 					query,
 					result.Show.Title,
@@ -131,7 +221,23 @@ var historyAddCmd = &cobra.Command{
 
 		if len(syncReq.Shows) == 0 && len(syncReq.Movies) == 0 {
 			if jsonOutput {
-				fmt.Println("{\"error\": \"no items matched\"}")
+				enc := json.NewEncoder(os.Stdout)
+				enc.SetIndent("", "  ")
+				if matchedAny {
+					_ = enc.Encode(map[string]interface{}{
+						"added_movies":     0,
+						"added_episodes":   0,
+						"not_found_movies": 0,
+						"not_found_shows":  0,
+						"shows":            showResults,
+					})
+				} else {
+					fmt.Println("{\"error\": \"no items matched\"}")
+				}
+				return
+			}
+			if matchedAny {
+				fmt.Println("\nNo new episodes to add.")
 			} else {
 				fmt.Println("\nNo items to add.")
 			}
@@ -156,10 +262,11 @@ var historyAddCmd = &cobra.Command{
 			enc := json.NewEncoder(os.Stdout)
 			enc.SetIndent("", "  ")
 			_ = enc.Encode(map[string]interface{}{
-				"added_movies":   resp.Added.Movies,
-				"added_episodes": resp.Added.Episodes,
+				"added_movies":     resp.Added.Movies,
+				"added_episodes":   resp.Added.Episodes,
 				"not_found_movies": len(resp.NotFound.Movies),
 				"not_found_shows":  len(resp.NotFound.Shows),
+				"shows":            showResults,
 			})
 			return
 		}

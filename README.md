@@ -90,6 +90,8 @@ trakt-cli history --type movies --json
 
 Mark movies or shows as watched. Searches by title and prefers exact matches.
 
+For shows, only episodes that have aired **and** are not already in your watch history are added — catching up on a partially watched show never creates duplicate plays, and a fully caught-up show adds nothing. Movies are always added as a new watch.
+
 ```bash
 trakt-cli history add "Severance" --json
 trakt-cli history add "The Sopranos" "The Wire" --json
@@ -101,6 +103,8 @@ trakt-cli history add --watched-at 2025-06-15 "Dark" --json
 |------|-------------|---------|
 | `--type` | `show` or `movie` | `show` |
 | `--watched-at` | YYYY-MM-DD or RFC3339 | now |
+
+JSON output includes a `shows` array with per-query detail (`query`, `matched`, `new_episodes`, `already_watched_episodes`).
 
 ### history remove
 

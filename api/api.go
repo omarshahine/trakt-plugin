@@ -661,6 +661,7 @@ type WatchedShow struct {
 	Plays         int        `json:"plays"`
 	LastWatchedAt *time.Time `json:"last_watched_at"`
 	LastUpdatedAt *time.Time `json:"last_updated_at"`
+	Seasons       []WatchedSeason `json:"seasons"`
 	Show          *struct {
 		Title string `json:"title"`
 		Year  int    `json:"year"`
@@ -672,6 +673,15 @@ type WatchedShow struct {
 			Tmdb  int    `json:"tmdb"`
 		} `json:"ids"`
 	} `json:"show"`
+}
+
+// WatchedSeason aggregates plays for one season of a WatchedShow.
+type WatchedSeason struct {
+	Number   int `json:"number"`
+	Episodes []struct {
+		Number int `json:"number"`
+		Plays  int `json:"plays"`
+	} `json:"episodes"`
 }
 
 func (c *APIClient) GetUserWatched(user string, watchedType string) ([]WatchedShow, error) {
@@ -698,6 +708,100 @@ func (c *APIClient) GetUserWatched(user string, watchedType string) ([]WatchedSh
 	}
 
 	return resp, nil
+}
+
+// ShowSeason is one season of a show from GET /shows/{id}/seasons. With
+// extended=episodes each season carries its episode list including
+// first_aired, which is null for episodes that have not aired yet.
+type ShowSeason struct {
+	Number   int `json:"number"`
+	Episodes []struct {
+		Number     int        `json:"number"`
+		FirstAired *time.Time `json:"first_aired"`
+	} `json:"episodes"`
+}
+
+// GetShowSeasons returns all seasons of a show with their episodes.
+func (c *APIClient) GetShowSeasons(showID int) ([]ShowSeason, error) {
+	httpResp, err := c.doRequest(requestParams{
+		method: http.MethodGet,
+		path:   fmt.Sprintf("/shows/%d/seasons", showID),
+		auth:   true,
+		query: map[string]string{
+			// full is required for episode first_aired dates; plain
+			// episodes returns them all as null.
+			"extended": "full,episodes",
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode != 200 {
+		return nil, fmt.Errorf("failed to get show seasons: %s", httpResp.Status)
+	}
+
+	var resp []ShowSeason
+	err = json.NewDecoder(httpResp.Body).Decode(&resp)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp, nil
+}
+
+// WatchedEpisodeSet returns the set of "season:number" keys the user has at
+// least one history play for. It reads the item history instead of the
+// watched/shows aggregate because Trakt does not reliably populate the
+// aggregate's seasons for plays added via /sync/history.
+func (c *APIClient) WatchedEpisodeSet(showID int) (map[string]bool, error) {
+	slug, err := c.GetUserSlug()
+	if err != nil {
+		return nil, err
+	}
+
+	set := make(map[string]bool)
+	for page := 1; ; page++ {
+		httpResp, err := c.doRequest(requestParams{
+			method: http.MethodGet,
+			path:   fmt.Sprintf("/users/%s/history/shows/%d", slug, showID),
+			auth:   true,
+			pagination: PaginationsParams{
+				Page:  page,
+				Limit: 100,
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		if httpResp.StatusCode != 200 {
+			httpResp.Body.Close()
+			return nil, fmt.Errorf("failed to get show history: %s", httpResp.Status)
+		}
+
+		var entries []struct {
+			Episode struct {
+				Season int `json:"season"`
+				Number int `json:"number"`
+			} `json:"episode"`
+		}
+		err = json.NewDecoder(httpResp.Body).Decode(&entries)
+		httpResp.Body.Close()
+		if err != nil {
+			return nil, err
+		}
+
+		for _, e := range entries {
+			set[fmt.Sprintf("%d:%d", e.Episode.Season, e.Episode.Number)] = true
+		}
+
+		pageCount, _ := strconv.Atoi(httpResp.Header.Get("X-Pagination-Page-Count"))
+		if len(entries) == 0 || pageCount <= page {
+			return set, nil
+		}
+	}
 }
 
 type SearchResult struct {
@@ -731,11 +835,24 @@ type SyncHistoryReq struct {
 	Shows  []SyncItem `json:"shows,omitempty"`
 }
 
+// SyncEpisode and SyncSeason narrow a show sync to specific episodes. Without
+// them Trakt adds a play for every aired episode of the show, including ones
+// already in the history.
+type SyncEpisode struct {
+	Number int `json:"number"`
+}
+
+type SyncSeason struct {
+	Number   int           `json:"number"`
+	Episodes []SyncEpisode `json:"episodes"`
+}
+
 type SyncItem struct {
-	WatchedAt string `json:"watched_at,omitempty"`
+	WatchedAt string       `json:"watched_at,omitempty"`
 	Ids       struct {
 		Trakt int `json:"trakt"`
 	} `json:"ids"`
+	Seasons []SyncSeason `json:"seasons,omitempty"`
 }
 
 type SyncHistoryResp struct {
