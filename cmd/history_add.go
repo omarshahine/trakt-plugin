@@ -22,6 +22,11 @@ type historyAddShowResult struct {
 	Matched                string `json:"matched,omitempty"`
 	NewEpisodes            int    `json:"new_episodes"`
 	AlreadyWatchedEpisodes int    `json:"already_watched_episodes"`
+	// DuplicateOf is set to the earlier query that already handled this
+	// show when several arguments resolve to the same Trakt ID. The entry
+	// adds nothing itself; it exists so every requested query gets a
+	// result in JSON mode.
+	DuplicateOf string `json:"duplicate_of,omitempty"`
 }
 
 // historyAddSkippedShow reports a matched show whose pending episodes could
@@ -219,6 +224,11 @@ var historyAddCmd = &cobra.Command{
 						result.Show.Title,
 						result.Show.Year,
 						termenv.String(fmt.Sprintf("duplicate of %q", firstQuery)).Foreground(p.Color("#FF6B6B")),
+					})
+					showResults = append(showResults, historyAddShowResult{
+						Query:       query,
+						Matched:     result.Show.Title,
+						DuplicateOf: firstQuery,
 					})
 					continue
 				}

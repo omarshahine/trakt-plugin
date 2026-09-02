@@ -73,8 +73,8 @@ trakt-cli history add --watched-at 2025-06-15 "Dark" --json
   history are added: catching up on a partially watched show never creates
   duplicate plays, and a fully caught-up show adds nothing
 - Repeated titles (or aliases resolving to the same show) are handled once
-  per call — later matches show as `duplicate of "<first query>"` and are
-  not queued again
+  per call — later matches add nothing and come back with a
+  `duplicate_of` field in `shows` (text output: `duplicate of "<query>"`)
 - `--type show` (default) or `--type movie`
 - `--watched-at`: RFC3339 or YYYY-MM-DD (defaults to now)
 - Accepts multiple titles in one call
