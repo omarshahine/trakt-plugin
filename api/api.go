@@ -860,9 +860,15 @@ type SyncHistoryResp struct {
 		Movies   int `json:"movies"`
 		Episodes int `json:"episodes"`
 	} `json:"added"`
+	// NotFound also carries seasons/episodes when the request narrowed a
+	// show via season/episode selectors: Trakt rejects unrecognized
+	// selectors there while still answering 201, so those entries must be
+	// surfaced to report partial writes as partial.
 	NotFound struct {
-		Movies []interface{} `json:"movies"`
-		Shows  []interface{} `json:"shows"`
+		Movies   []interface{} `json:"movies"`
+		Shows    []interface{} `json:"shows"`
+		Seasons  []interface{} `json:"seasons"`
+		Episodes []interface{} `json:"episodes"`
 	} `json:"not_found"`
 }
 

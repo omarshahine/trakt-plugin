@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -72,6 +73,32 @@ func pendingEpisodesForShow(client *api.APIClient, showID int) ([]api.SyncSeason
 	return pending, watchedCount, nil
 }
 
+// abortOnRateLimit ends the command as soon as the Trakt API rate-limits a
+// search or a pending-episode lookup: processing further items would only
+// hit the same bucket, and a later successful sync would hide the failure
+// from wrappers that need to back off. Nothing is synced on this path, so a
+// retried invocation after backoff cannot create duplicate plays.
+func abortOnRateLimit(err error) {
+	var rlErr *api.RateLimitError
+	if !errors.As(err, &rlErr) {
+		return
+	}
+	if jsonOutput {
+		enc := json.NewEncoder(os.Stdout)
+		payload := map[string]interface{}{"error": rlErr.Error()}
+		if rlErr.RetryAfterSeconds > 0 {
+			payload["retry_after"] = rlErr.RetryAfterSeconds
+		}
+		_ = enc.Encode(payload)
+	} else {
+		fmt.Println("\nRate limited by the Trakt API; nothing added.")
+		if rlErr.RetryAfterSeconds > 0 {
+			fmt.Printf("Retry after %d seconds.\n", rlErr.RetryAfterSeconds)
+		}
+	}
+	os.Exit(1)
+}
+
 var historyAddCmd = &cobra.Command{
 	Use:   "add [show or movie names...]",
 	Short: "Add items to your watch history",
@@ -130,6 +157,7 @@ var historyAddCmd = &cobra.Command{
 			results, err := client.Search(query, searchType)
 			s.Stop()
 			if err != nil {
+				abortOnRateLimit(err)
 				logrus.WithError(err).Errorf("Failed to search for %s", query)
 				continue
 			}
@@ -179,6 +207,7 @@ var historyAddCmd = &cobra.Command{
 				// for every aired episode, including ones already watched.
 				pending, watchedCount, err := pendingEpisodesForShow(&client, result.Show.Ids.Trakt)
 				if err != nil {
+					abortOnRateLimit(err)
 					logrus.WithError(err).Warnf("Skipping %s: could not resolve pending episodes", result.Show.Title)
 					p := termenv.ColorProfile()
 					skippedShows = append(skippedShows, historyAddSkippedShow{
@@ -286,11 +315,13 @@ var historyAddCmd = &cobra.Command{
 			enc := json.NewEncoder(os.Stdout)
 			enc.SetIndent("", "  ")
 			payload := map[string]interface{}{
-				"added_movies":     resp.Added.Movies,
-				"added_episodes":   resp.Added.Episodes,
-				"not_found_movies": len(resp.NotFound.Movies),
-				"not_found_shows":  len(resp.NotFound.Shows),
-				"shows":            showResults,
+				"added_movies":       resp.Added.Movies,
+				"added_episodes":     resp.Added.Episodes,
+				"not_found_movies":   len(resp.NotFound.Movies),
+				"not_found_shows":    len(resp.NotFound.Shows),
+				"not_found_seasons":  len(resp.NotFound.Seasons),
+				"not_found_episodes": len(resp.NotFound.Episodes),
+				"shows":              showResults,
 			}
 			if len(skippedShows) > 0 {
 				payload["skipped_shows"] = skippedShows
@@ -300,8 +331,11 @@ var historyAddCmd = &cobra.Command{
 		}
 
 		fmt.Printf("Added: %d movies, %d episodes\n", resp.Added.Movies, resp.Added.Episodes)
-		if len(resp.NotFound.Movies) > 0 || len(resp.NotFound.Shows) > 0 {
-			fmt.Printf("Not found: %d movies, %d shows\n", len(resp.NotFound.Movies), len(resp.NotFound.Shows))
+		if len(resp.NotFound.Movies) > 0 || len(resp.NotFound.Shows) > 0 ||
+			len(resp.NotFound.Seasons) > 0 || len(resp.NotFound.Episodes) > 0 {
+			fmt.Printf("Not found: %d movies, %d shows, %d seasons, %d episodes\n",
+				len(resp.NotFound.Movies), len(resp.NotFound.Shows),
+				len(resp.NotFound.Seasons), len(resp.NotFound.Episodes))
 		}
 		if len(skippedShows) > 0 {
 			fmt.Printf("Skipped (could not resolve pending episodes): %d shows\n", len(skippedShows))
