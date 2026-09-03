@@ -108,6 +108,9 @@ trakt-cli history add --watched-at 2025-06-15 "Dark" --json
 - Repeated titles (or aliases resolving to the same show) are handled once
   per call — later matches add nothing and come back with a
   `duplicate_of` field in `shows` (text output: `duplicate of "<query>"`)
+- A requested title that matches nothing still gets a `shows` entry in
+  JSON output (with no `matched` field), so every requested title is
+  accounted for
 - `--type show` (default) or `--type movie`
 - `--watched-at`: RFC3339 or YYYY-MM-DD (defaults to now)
 - Accepts multiple titles in one call

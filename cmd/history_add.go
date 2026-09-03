@@ -18,7 +18,10 @@ import (
 
 // historyAddShowResult reports what a single show query would add.
 type historyAddShowResult struct {
-	Query                  string `json:"query"`
+	Query string `json:"query"`
+	// Matched is omitted when the query resolved to nothing (no search
+	// results, or the search failed); every requested query still gets an
+	// entry so JSON callers can account for all titles.
 	Matched                string `json:"matched,omitempty"`
 	NewEpisodes            int    `json:"new_episodes"`
 	AlreadyWatchedEpisodes int    `json:"already_watched_episodes"`
@@ -174,6 +177,7 @@ var historyAddCmd = &cobra.Command{
 			if err != nil {
 				abortOnRateLimit(err)
 				logrus.WithError(err).Errorf("Failed to search for %s", query)
+				showResults = append(showResults, historyAddShowResult{Query: query})
 				continue
 			}
 
@@ -185,6 +189,7 @@ var historyAddCmd = &cobra.Command{
 					"",
 					"",
 				})
+				showResults = append(showResults, historyAddShowResult{Query: query})
 				continue
 			}
 
