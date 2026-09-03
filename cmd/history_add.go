@@ -25,9 +25,11 @@ type historyAddQueryResult struct {
 	Type  string `json:"type"` // "show" or "movie"
 	// Matched is omitted when the query resolved to nothing; SearchError
 	// distinguishes a failed search from a genuine no-result search.
-	Matched                string `json:"matched,omitempty"`
-	NewEpisodes            int    `json:"new_episodes,omitempty"`
-	AlreadyWatchedEpisodes int    `json:"already_watched_episodes,omitempty"`
+	Matched string `json:"matched,omitempty"`
+	// Episode counters are always present on show results (zero included)
+	// and omitted for movies, where they carry no meaning.
+	NewEpisodes            *int   `json:"new_episodes,omitempty"`
+	AlreadyWatchedEpisodes *int   `json:"already_watched_episodes,omitempty"`
 	// DuplicateOf is set to the earlier query that already handled this
 	// show when several arguments resolve to the same Trakt ID. The entry
 	// adds nothing itself; it exists so every requested query gets a
@@ -282,14 +284,17 @@ var historyAddCmd = &cobra.Command{
 					continue
 				}
 				queuedShows[result.Show.Ids.Trakt] = query
+				newEpisodes := 0
+				for _, s := range pending {
+					newEpisodes += len(s.Episodes)
+				}
+				watched := watchedCount
 				res := historyAddQueryResult{
 					Query:                  query,
 					Type:                   searchType,
 					Matched:                result.Show.Title,
-					AlreadyWatchedEpisodes: watchedCount,
-				}
-				for _, s := range pending {
-					res.NewEpisodes += len(s.Episodes)
+					NewEpisodes:            &newEpisodes,
+					AlreadyWatchedEpisodes: &watched,
 				}
 				if len(pending) == 0 {
 					matchedAny = true
