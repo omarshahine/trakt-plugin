@@ -107,14 +107,17 @@ trakt-cli history add --watched-at 2025-06-15 "Dark" --json
   duplicate plays, and a fully caught-up show adds nothing
 - Repeated titles (or aliases resolving to the same show) are handled once
   per call — later matches add nothing and come back with a
-  `duplicate_of` field in `shows` (text output: `duplicate of "<query>"`)
-- A requested title that matches nothing still gets a `shows` entry in
-  JSON output (with no `matched` field), so every requested title is
-  accounted for
+  `duplicate_of` field in `queries` (text output: `duplicate of "<query>"`)
+- Every requested title gets a `queries` entry in JSON output, show or
+  movie alike (`query`, `type`): matched titles carry `matched` (shows
+  also `new_episodes` / `already_watched_episodes`), titles that match
+  nothing have no `matched` field, and a title whose Trakt search failed
+  carries `search_error` — so a failed lookup is distinguishable from
+  "not found"
 - `--type show` (default) or `--type movie`
 - `--watched-at`: RFC3339 or YYYY-MM-DD (defaults to now)
 - Accepts multiple titles in one call
-- JSON output: `{ "added_episodes": N, "added_movies": N, "not_found_movies": N, "not_found_shows": N, "not_found_seasons": N, "not_found_episodes": N, "shows": [{ "query", "matched", "new_episodes", "already_watched_episodes" }] }`
+- JSON output: `{ "added_episodes": N, "added_movies": N, "not_found_movies": N, "not_found_shows": N, "not_found_seasons": N, "not_found_episodes": N, "queries": [{ "query", "type", "matched", "new_episodes", "already_watched_episodes", "duplicate_of", "search_error" }] }`
 - A show whose pending-episode lookup fails is skipped and reported in an
   additive `skipped_shows` array; if every lookup fails, nothing is written
   and the command exits 1 with `{"error": "pending episode lookup failed", "skipped_shows": [...]}`

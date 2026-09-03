@@ -16,20 +16,26 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// historyAddShowResult reports what a single show query would add.
-type historyAddShowResult struct {
+// historyAddQueryResult reports what a single requested query resolved to,
+// for shows and movies alike. Every requested query gets an entry so JSON
+// callers can account for all titles; shows whose pending-episode lookup
+// failed are reported via skipped_shows instead.
+type historyAddQueryResult struct {
 	Query string `json:"query"`
-	// Matched is omitted when the query resolved to nothing (no search
-	// results, or the search failed); every requested query still gets an
-	// entry so JSON callers can account for all titles.
+	Type  string `json:"type"` // "show" or "movie"
+	// Matched is omitted when the query resolved to nothing; SearchError
+	// distinguishes a failed search from a genuine no-result search.
 	Matched                string `json:"matched,omitempty"`
-	NewEpisodes            int    `json:"new_episodes"`
-	AlreadyWatchedEpisodes int    `json:"already_watched_episodes"`
+	NewEpisodes            int    `json:"new_episodes,omitempty"`
+	AlreadyWatchedEpisodes int    `json:"already_watched_episodes,omitempty"`
 	// DuplicateOf is set to the earlier query that already handled this
 	// show when several arguments resolve to the same Trakt ID. The entry
 	// adds nothing itself; it exists so every requested query gets a
 	// result in JSON mode.
 	DuplicateOf string `json:"duplicate_of,omitempty"`
+	// SearchError is set instead of Matched when the Trakt search itself
+	// failed for this query.
+	SearchError string `json:"search_error,omitempty"`
 }
 
 // historyAddSkippedShow reports a matched show whose pending episodes could
@@ -148,7 +154,7 @@ var historyAddCmd = &cobra.Command{
 		s := spinner.New(spinner.CharSets[2], 100*time.Millisecond)
 
 		syncReq := &api.SyncHistoryReq{}
-		var showResults []historyAddShowResult
+		var queryResults []historyAddQueryResult
 		var skippedShows []historyAddSkippedShow
 		// Two arguments can resolve to the same show (repeated title or an
 		// alias); each lookup would see the same pre-sync history and queue
@@ -177,7 +183,18 @@ var historyAddCmd = &cobra.Command{
 			if err != nil {
 				abortOnRateLimit(err)
 				logrus.WithError(err).Errorf("Failed to search for %s", query)
-				showResults = append(showResults, historyAddShowResult{Query: query})
+				p := termenv.ColorProfile()
+				t.AppendRow([]interface{}{
+					query,
+					termenv.String("SEARCH FAILED").Foreground(p.Color("#FF6B6B")),
+					"",
+					"",
+				})
+				queryResults = append(queryResults, historyAddQueryResult{
+					Query:       query,
+					Type:        searchType,
+					SearchError: err.Error(),
+				})
 				continue
 			}
 
@@ -189,7 +206,7 @@ var historyAddCmd = &cobra.Command{
 					"",
 					"",
 				})
-				showResults = append(showResults, historyAddShowResult{Query: query})
+				queryResults = append(queryResults, historyAddQueryResult{Query: query, Type: searchType})
 				continue
 			}
 
@@ -221,6 +238,11 @@ var historyAddCmd = &cobra.Command{
 					result.Movie.Year,
 					result.Movie.Ids.Trakt,
 				})
+				queryResults = append(queryResults, historyAddQueryResult{
+					Query:   query,
+					Type:    searchType,
+					Matched: result.Movie.Title,
+				})
 			} else if result.Show != nil {
 				if firstQuery, dup := queuedShows[result.Show.Ids.Trakt]; dup {
 					p := termenv.ColorProfile()
@@ -230,8 +252,9 @@ var historyAddCmd = &cobra.Command{
 						result.Show.Year,
 						termenv.String(fmt.Sprintf("duplicate of %q", firstQuery)).Foreground(p.Color("#FF6B6B")),
 					})
-					showResults = append(showResults, historyAddShowResult{
+					queryResults = append(queryResults, historyAddQueryResult{
 						Query:       query,
+						Type:        searchType,
 						Matched:     result.Show.Title,
 						DuplicateOf: firstQuery,
 					})
@@ -259,8 +282,9 @@ var historyAddCmd = &cobra.Command{
 					continue
 				}
 				queuedShows[result.Show.Ids.Trakt] = query
-				res := historyAddShowResult{
+				res := historyAddQueryResult{
 					Query:                  query,
+					Type:                   searchType,
 					Matched:                result.Show.Title,
 					AlreadyWatchedEpisodes: watchedCount,
 				}
@@ -275,14 +299,14 @@ var historyAddCmd = &cobra.Command{
 						result.Show.Year,
 						fmt.Sprintf("already watched (%d eps)", watchedCount),
 					})
-					showResults = append(showResults, res)
+					queryResults = append(queryResults, res)
 					continue
 				}
 				item.Ids.Trakt = result.Show.Ids.Trakt
 				item.Seasons = pending
 				syncReq.Shows = append(syncReq.Shows, item)
 				matchedAny = true
-				showResults = append(showResults, res)
+				queryResults = append(queryResults, res)
 				t.AppendRow([]interface{}{
 					query,
 					result.Show.Title,
@@ -305,6 +329,7 @@ var historyAddCmd = &cobra.Command{
 					_ = enc.Encode(map[string]interface{}{
 						"error":         "pending episode lookup failed",
 						"skipped_shows": skippedShows,
+						"queries":       queryResults,
 					})
 					os.Exit(1)
 				}
@@ -316,10 +341,16 @@ var historyAddCmd = &cobra.Command{
 						"not_found_shows":    0,
 						"not_found_seasons":  0,
 						"not_found_episodes": 0,
-						"shows":              showResults,
+						"queries":            queryResults,
 					})
 				} else {
-					fmt.Println("{\"error\": \"no items matched\"}")
+					// Every requested query gets an entry in queries, so a
+					// stdout-only consumer can tell a failed search
+					// (search_error) apart from a genuine no-match.
+					_ = enc.Encode(map[string]interface{}{
+						"error":   "no items matched",
+						"queries": queryResults,
+					})
 				}
 				return
 			}
@@ -359,7 +390,7 @@ var historyAddCmd = &cobra.Command{
 				"not_found_shows":    len(resp.NotFound.Shows),
 				"not_found_seasons":  len(resp.NotFound.Seasons),
 				"not_found_episodes": len(resp.NotFound.Episodes),
-				"shows":              showResults,
+				"queries":            queryResults,
 			}
 			if len(skippedShows) > 0 {
 				payload["skipped_shows"] = skippedShows

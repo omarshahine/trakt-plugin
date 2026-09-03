@@ -104,7 +104,7 @@ trakt-cli history add --watched-at 2025-06-15 "Dark" --json
 | `--type` | `show` or `movie` | `show` |
 | `--watched-at` | YYYY-MM-DD or RFC3339 | now |
 
-JSON output includes a `shows` array with per-query detail (`query`, `matched`, `new_episodes`, `already_watched_episodes`).
+JSON output includes a `queries` array with per-query detail for every requested title, show or movie alike (`query`, `type`, `matched`; shows also `new_episodes`, `already_watched_episodes`). A title that matches nothing has no `matched` field; a title whose Trakt search failed carries `search_error` instead.
 
 ### history remove
 
