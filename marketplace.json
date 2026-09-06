@@ -8,7 +8,7 @@
       "name": "trakt",
       "source": "./openclaw",
       "description": "Track movies and TV shows via trakt.tv",
-      "version": "1.9.1"
+      "version": "1.9.3"
     }
   ]
 }
