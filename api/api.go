@@ -551,12 +551,12 @@ func (c *APIClient) GetUserSettings() (UserSettings, error) {
 }
 
 type WatchlistItem struct {
-	Rank    int       `json:"rank"`
-	ID      int64     `json:"id"`
+	Rank     int       `json:"rank"`
+	ID       int64     `json:"id"`
 	ListedAt time.Time `json:"listed_at"`
-	Notes   string    `json:"notes"`
-	Type    string    `json:"type"`
-	Movie   *struct {
+	Notes    string    `json:"notes"`
+	Type     string    `json:"type"`
+	Movie    *struct {
 		Title string `json:"title"`
 		Year  int    `json:"year"`
 		Ids   struct {
@@ -618,10 +618,10 @@ func (c *APIClient) GetUserWatchlist(user string, listType string, params Pagina
 }
 
 type ShowProgress struct {
-	Aired     int  `json:"aired"`
-	Completed int  `json:"completed"`
+	Aired         int        `json:"aired"`
+	Completed     int        `json:"completed"`
 	LastWatchedAt *time.Time `json:"last_watched_at"`
-	NextEpisode *struct {
+	NextEpisode   *struct {
 		Season int    `json:"season"`
 		Number int    `json:"number"`
 		Title  string `json:"title"`
@@ -700,6 +700,109 @@ func (c *APIClient) GetUserWatched(user string, watchedType string) ([]WatchedSh
 	return resp, nil
 }
 
+// ShowSeason is one season of a show from GET /shows/{id}/seasons. With
+// extended=episodes each season carries its episode list including
+// first_aired, which is null for episodes that have not aired yet.
+type ShowSeason struct {
+	Number   int `json:"number"`
+	Episodes []struct {
+		Number     int        `json:"number"`
+		FirstAired *time.Time `json:"first_aired"`
+	} `json:"episodes"`
+}
+
+// GetShowSeasons returns all seasons of a show with their episodes.
+func (c *APIClient) GetShowSeasons(showID int) ([]ShowSeason, error) {
+	httpResp, err := c.doRequest(requestParams{
+		method: http.MethodGet,
+		path:   fmt.Sprintf("/shows/%d/seasons", showID),
+		auth:   true,
+		query: map[string]string{
+			// full is required for episode first_aired dates; plain
+			// episodes returns them all as null.
+			"extended": "full,episodes",
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode != 200 {
+		return nil, fmt.Errorf("failed to get show seasons: %s", httpResp.Status)
+	}
+
+	var resp []ShowSeason
+	err = json.NewDecoder(httpResp.Body).Decode(&resp)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp, nil
+}
+
+// WatchedEpisodeSet returns the set of "season:number" keys the user has at
+// least one history play for. It reads the item history instead of the
+// watched/shows aggregate because Trakt does not reliably populate the
+// aggregate's seasons for plays added via /sync/history.
+// watchedHistoryPageSize is the page size for the show-history lookup. A full
+// page means there is more to fetch regardless of what the headers claim.
+const watchedHistoryPageSize = 100
+
+func (c *APIClient) WatchedEpisodeSet(showID int) (map[string]bool, error) {
+	slug, err := c.GetUserSlug()
+	if err != nil {
+		return nil, err
+	}
+
+	set := make(map[string]bool)
+	for page := 1; ; page++ {
+		httpResp, err := c.doRequest(requestParams{
+			method: http.MethodGet,
+			path:   fmt.Sprintf("/users/%s/history/shows/%d", slug, showID),
+			auth:   true,
+			pagination: PaginationsParams{
+				Page:  page,
+				Limit: watchedHistoryPageSize,
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		if httpResp.StatusCode != 200 {
+			httpResp.Body.Close()
+			return nil, fmt.Errorf("failed to get show history: %s", httpResp.Status)
+		}
+
+		var entries []struct {
+			Episode struct {
+				Season int `json:"season"`
+				Number int `json:"number"`
+			} `json:"episode"`
+		}
+		err = json.NewDecoder(httpResp.Body).Decode(&entries)
+		httpResp.Body.Close()
+		if err != nil {
+			return nil, err
+		}
+
+		for _, e := range entries {
+			set[fmt.Sprintf("%d:%d", e.Episode.Season, e.Episode.Number)] = true
+		}
+
+		// A missing or unparseable X-Pagination-Page-Count parses to 0, and
+		// `0 <= 1` would end the loop after a single page -- silently
+		// under-counting the watched set and reintroducing the duplicate
+		// plays this lookup exists to prevent. Only stop when the API says
+		// we are done AND the page came back short.
+		pageCount, _ := strconv.Atoi(httpResp.Header.Get("X-Pagination-Page-Count"))
+		if len(entries) == 0 || (pageCount <= page && len(entries) < watchedHistoryPageSize) {
+			return set, nil
+		}
+	}
+}
+
 type SearchResult struct {
 	Type  string  `json:"type"`
 	Score float64 `json:"score"`
@@ -731,11 +834,24 @@ type SyncHistoryReq struct {
 	Shows  []SyncItem `json:"shows,omitempty"`
 }
 
+// SyncEpisode and SyncSeason narrow a show sync to specific episodes. Without
+// them Trakt adds a play for every aired episode of the show, including ones
+// already in the history.
+type SyncEpisode struct {
+	Number int `json:"number"`
+}
+
+type SyncSeason struct {
+	Number   int           `json:"number"`
+	Episodes []SyncEpisode `json:"episodes"`
+}
+
 type SyncItem struct {
 	WatchedAt string `json:"watched_at,omitempty"`
 	Ids       struct {
 		Trakt int `json:"trakt"`
 	} `json:"ids"`
+	Seasons []SyncSeason `json:"seasons,omitempty"`
 }
 
 type SyncHistoryResp struct {
@@ -743,9 +859,15 @@ type SyncHistoryResp struct {
 		Movies   int `json:"movies"`
 		Episodes int `json:"episodes"`
 	} `json:"added"`
+	// NotFound also carries seasons/episodes when the request narrowed a
+	// show via season/episode selectors: Trakt rejects unrecognized
+	// selectors there while still answering 201, so those entries must be
+	// surfaced to report partial writes as partial.
 	NotFound struct {
-		Movies []interface{} `json:"movies"`
-		Shows  []interface{} `json:"shows"`
+		Movies   []interface{} `json:"movies"`
+		Shows    []interface{} `json:"shows"`
+		Seasons  []interface{} `json:"seasons"`
+		Episodes []interface{} `json:"episodes"`
 	} `json:"not_found"`
 }
 
