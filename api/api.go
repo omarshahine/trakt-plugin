@@ -551,12 +551,12 @@ func (c *APIClient) GetUserSettings() (UserSettings, error) {
 }
 
 type WatchlistItem struct {
-	Rank    int       `json:"rank"`
-	ID      int64     `json:"id"`
+	Rank     int       `json:"rank"`
+	ID       int64     `json:"id"`
 	ListedAt time.Time `json:"listed_at"`
-	Notes   string    `json:"notes"`
-	Type    string    `json:"type"`
-	Movie   *struct {
+	Notes    string    `json:"notes"`
+	Type     string    `json:"type"`
+	Movie    *struct {
 		Title string `json:"title"`
 		Year  int    `json:"year"`
 		Ids   struct {
@@ -618,10 +618,10 @@ func (c *APIClient) GetUserWatchlist(user string, listType string, params Pagina
 }
 
 type ShowProgress struct {
-	Aired     int  `json:"aired"`
-	Completed int  `json:"completed"`
+	Aired         int        `json:"aired"`
+	Completed     int        `json:"completed"`
 	LastWatchedAt *time.Time `json:"last_watched_at"`
-	NextEpisode *struct {
+	NextEpisode   *struct {
 		Season int    `json:"season"`
 		Number int    `json:"number"`
 		Title  string `json:"title"`
@@ -661,7 +661,6 @@ type WatchedShow struct {
 	Plays         int        `json:"plays"`
 	LastWatchedAt *time.Time `json:"last_watched_at"`
 	LastUpdatedAt *time.Time `json:"last_updated_at"`
-	Seasons       []WatchedSeason `json:"seasons"`
 	Show          *struct {
 		Title string `json:"title"`
 		Year  int    `json:"year"`
@@ -673,15 +672,6 @@ type WatchedShow struct {
 			Tmdb  int    `json:"tmdb"`
 		} `json:"ids"`
 	} `json:"show"`
-}
-
-// WatchedSeason aggregates plays for one season of a WatchedShow.
-type WatchedSeason struct {
-	Number   int `json:"number"`
-	Episodes []struct {
-		Number int `json:"number"`
-		Plays  int `json:"plays"`
-	} `json:"episodes"`
 }
 
 func (c *APIClient) GetUserWatched(user string, watchedType string) ([]WatchedShow, error) {
@@ -755,6 +745,10 @@ func (c *APIClient) GetShowSeasons(showID int) ([]ShowSeason, error) {
 // least one history play for. It reads the item history instead of the
 // watched/shows aggregate because Trakt does not reliably populate the
 // aggregate's seasons for plays added via /sync/history.
+// watchedHistoryPageSize is the page size for the show-history lookup. A full
+// page means there is more to fetch regardless of what the headers claim.
+const watchedHistoryPageSize = 100
+
 func (c *APIClient) WatchedEpisodeSet(showID int) (map[string]bool, error) {
 	slug, err := c.GetUserSlug()
 	if err != nil {
@@ -769,7 +763,7 @@ func (c *APIClient) WatchedEpisodeSet(showID int) (map[string]bool, error) {
 			auth:   true,
 			pagination: PaginationsParams{
 				Page:  page,
-				Limit: 100,
+				Limit: watchedHistoryPageSize,
 			},
 		})
 		if err != nil {
@@ -797,8 +791,13 @@ func (c *APIClient) WatchedEpisodeSet(showID int) (map[string]bool, error) {
 			set[fmt.Sprintf("%d:%d", e.Episode.Season, e.Episode.Number)] = true
 		}
 
+		// A missing or unparseable X-Pagination-Page-Count parses to 0, and
+		// `0 <= 1` would end the loop after a single page -- silently
+		// under-counting the watched set and reintroducing the duplicate
+		// plays this lookup exists to prevent. Only stop when the API says
+		// we are done AND the page came back short.
 		pageCount, _ := strconv.Atoi(httpResp.Header.Get("X-Pagination-Page-Count"))
-		if len(entries) == 0 || pageCount <= page {
+		if len(entries) == 0 || (pageCount <= page && len(entries) < watchedHistoryPageSize) {
 			return set, nil
 		}
 	}
@@ -848,7 +847,7 @@ type SyncSeason struct {
 }
 
 type SyncItem struct {
-	WatchedAt string       `json:"watched_at,omitempty"`
+	WatchedAt string `json:"watched_at,omitempty"`
 	Ids       struct {
 		Trakt int `json:"trakt"`
 	} `json:"ids"`

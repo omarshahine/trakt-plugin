@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/omarshahine/trakt-plugin/api"
 	"github.com/briandowns/spinner"
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/muesli/termenv"
+	"github.com/omarshahine/trakt-plugin/api"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -28,8 +28,8 @@ type historyAddQueryResult struct {
 	Matched string `json:"matched,omitempty"`
 	// Episode counters are always present on show results (zero included)
 	// and omitted for movies, where they carry no meaning.
-	NewEpisodes            *int   `json:"new_episodes,omitempty"`
-	AlreadyWatchedEpisodes *int   `json:"already_watched_episodes,omitempty"`
+	NewEpisodes            *int `json:"new_episodes,omitempty"`
+	AlreadyWatchedEpisodes *int `json:"already_watched_episodes,omitempty"`
 	// DuplicateOf is set to the earlier query that already handled this
 	// show when several arguments resolve to the same Trakt ID. The entry
 	// adds nothing itself; it exists so every requested query gets a
@@ -38,6 +38,7 @@ type historyAddQueryResult struct {
 	// SearchError is set instead of Matched when the Trakt search itself
 	// failed for this query.
 	SearchError string `json:"search_error,omitempty"`
+	Rewatch     bool   `json:"rewatch,omitempty"`
 }
 
 // historyAddSkippedShow reports a matched show whose pending episodes could
@@ -52,10 +53,17 @@ type historyAddSkippedShow struct {
 // grouped as sync seasons, plus how many aired episodes were already
 // watched. Episodes without a first_aired date in the past count as unaired
 // and are never included.
+//
+// Season 0 (specials) is skipped. GET /shows/{id}/seasons returns it, but the
+// progress command reads /shows/{id}/progress/watched, which excludes specials
+// by default -- marking them watched here would make the two disagree.
 func filterPendingEpisodes(seasons []api.ShowSeason, watched map[string]bool, now time.Time) ([]api.SyncSeason, int) {
 	var pending []api.SyncSeason
 	watchedCount := 0
 	for _, s := range seasons {
+		if s.Number == 0 {
+			continue
+		}
 		var eps []api.SyncEpisode
 		for _, e := range s.Episodes {
 			if e.FirstAired == nil || e.FirstAired.After(now) {
@@ -129,6 +137,7 @@ var historyAddCmd = &cobra.Command{
 		client := api.NewAPIClient()
 		itemType, _ := cmd.Flags().GetString("type")
 		watchedAt, _ := cmd.Flags().GetString("watched-at")
+		rewatch, _ := cmd.Flags().GetBool("rewatch")
 
 		if itemType == "" {
 			itemType = "show"
@@ -262,6 +271,29 @@ var historyAddCmd = &cobra.Command{
 					})
 					continue
 				}
+				// --rewatch is the deliberate opt-in to the old behavior:
+				// a bare show item makes Trakt add a play for every aired
+				// episode, which is exactly what recording a rewatch means.
+				if rewatch {
+					queuedShows[result.Show.Ids.Trakt] = query
+					item.Ids.Trakt = result.Show.Ids.Trakt
+					syncReq.Shows = append(syncReq.Shows, item)
+					matchedAny = true
+					queryResults = append(queryResults, historyAddQueryResult{
+						Query:   query,
+						Type:    searchType,
+						Matched: result.Show.Title,
+						Rewatch: true,
+					})
+					t.AppendRow([]interface{}{
+						query,
+						result.Show.Title,
+						result.Show.Year,
+						fmt.Sprintf("rewatch (%d)", result.Show.Ids.Trakt),
+					})
+					continue
+				}
+
 				// Narrow the sync to aired episodes the user has not
 				// watched yet: a bare show item makes Trakt add a new play
 				// for every aired episode, including ones already watched.
@@ -422,4 +454,5 @@ func init() {
 
 	historyAddCmd.Flags().String("type", "show", "Type of item (show, movie)")
 	historyAddCmd.Flags().String("watched-at", "", "When the items were watched (RFC3339 or YYYY-MM-DD). Defaults to now")
+	historyAddCmd.Flags().Bool("rewatch", false, "Record another play for every aired episode, including ones already watched")
 }

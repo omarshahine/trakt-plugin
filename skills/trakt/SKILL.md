@@ -99,12 +99,18 @@ trakt-cli history add "Pluribus" --json
 trakt-cli history add "The Sopranos" "The Wire" --json
 trakt-cli history add --type movie "The Godfather" --json
 trakt-cli history add --watched-at 2025-06-15 "Dark" --json
+trakt-cli history add --rewatch "Severance" --json
 ```
 
 - Searches by name, prefers exact title matches
 - For shows, only episodes that have aired **and** are not yet in your
   history are added: catching up on a partially watched show never creates
   duplicate plays, and a fully caught-up show adds nothing
+- Season 0 (specials) is never marked watched, so this agrees with what
+  `progress` reports
+- `--rewatch` deliberately records another play for every aired episode,
+  including ones already watched. Use it only when the user actually means
+  a rewatch; without it a finished show is a no-op
 - Repeated titles (or aliases resolving to the same show) are handled once
   per call — later matches add nothing and come back with a
   `duplicate_of` field in `queries` (text output: `duplicate of "<query>"`)

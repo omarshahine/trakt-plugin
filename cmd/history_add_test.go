@@ -86,9 +86,30 @@ func TestFilterPendingEpisodes(t *testing.T) {
 			wantWatchedN: 5,
 		},
 		{
+			name: "season 0 specials are never added",
+			seasons: []api.ShowSeason{
+				{Number: 0, Episodes: airedEpisodes(0, 1, 2)},
+				{Number: 1, Episodes: airedEpisodes(1, 1)},
+			},
+			watched: map[string]bool{},
+			wantPending: []api.SyncSeason{
+				{Number: 1, Episodes: []api.SyncEpisode{{Number: 1}}},
+			},
+		},
+		{
+			name: "watched specials do not inflate the watched count",
+			seasons: []api.ShowSeason{
+				{Number: 0, Episodes: airedEpisodes(0, 1)},
+				{Number: 1, Episodes: airedEpisodes(1, 1)},
+			},
+			watched:      map[string]bool{"0:1": true, "1:1": true},
+			wantPending:  nil,
+			wantWatchedN: 1,
+		},
+		{
 			name: "episodes with unknown air date are never added",
 			seasons: []api.ShowSeason{{
-				Number:   1,
+				Number: 1,
 				Episodes: episodeList(struct {
 					Number     int        `json:"number"`
 					FirstAired *time.Time `json:"first_aired"`
