@@ -66,13 +66,37 @@ trakt-cli history add "Pluribus" --json
 trakt-cli history add "The Sopranos" "The Wire" --json
 trakt-cli history add --type movie "The Godfather" --json
 trakt-cli history add --watched-at 2025-06-15 "Dark" --json
+trakt-cli history add --rewatch "Severance" --json
 ```
 
 - Searches by name, prefers exact title matches
+- For shows, only episodes that have aired **and** are not yet in your
+  history are added: catching up on a partially watched show never creates
+  duplicate plays, and a fully caught-up show adds nothing
+- Season 0 (specials) is never marked watched, so this agrees with what
+  `progress` reports
+- `--rewatch` deliberately records another play for every aired episode,
+  including ones already watched. Use it only when the user actually means
+  a rewatch; without it a finished show is a no-op
+- Repeated titles (or aliases resolving to the same show) are handled once
+  per call — later matches add nothing and come back with a
+  `duplicate_of` field in `queries` (text output: `duplicate of "<query>"`)
+- Every requested title gets a `queries` entry in JSON output, show or
+  movie alike (`query`, `type`): matched titles carry `matched` (shows
+  also `new_episodes` / `already_watched_episodes`), titles that match
+  nothing have no `matched` field, and a title whose Trakt search failed
+  carries `search_error` — so a failed lookup is distinguishable from
+  "not found"
 - `--type show` (default) or `--type movie`
 - `--watched-at`: RFC3339 or YYYY-MM-DD (defaults to now)
 - Accepts multiple titles in one call
-- JSON output: `{ "added_episodes": N, "added_movies": N, "not_found_movies": N, "not_found_shows": N }`
+- JSON output: `{ "added_episodes": N, "added_movies": N, "not_found_movies": N, "not_found_shows": N, "not_found_seasons": N, "not_found_episodes": N, "queries": [{ "query", "type", "matched", "new_episodes", "already_watched_episodes", "duplicate_of", "search_error" }] }`
+- A show whose pending-episode lookup fails is skipped and reported in an
+  additive `skipped_shows` array; if every lookup fails, nothing is written
+  and the command exits 1 with `{"error": "pending episode lookup failed", "skipped_shows": [...]}`
+- On a Trakt rate limit (429) the command stops immediately, syncs nothing,
+  and exits 1 with `{"error": ..., "retry_after": N}` (marker also on
+  stderr) — wait out `retry_after` before calling any trakt tool again
 
 ### Search
 
