@@ -4,6 +4,9 @@ on:
   push:
     tags:
       - "v*"
+  # Dispatched by push.yml after semantic-release; a GITHUB_TOKEN tag does not
+  # fire `push: tags`.
+  workflow_dispatch:
 
 permissions:
   contents: read

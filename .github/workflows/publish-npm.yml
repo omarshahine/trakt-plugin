@@ -4,6 +4,10 @@ on:
   push:
     tags:
       - "v*"
+  # push.yml dispatches this after semantic-release cuts a tag. A tag created
+  # with GITHUB_TOKEN does not fire `push: tags`, so without this an automated
+  # release publishes nothing.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -29,14 +33,17 @@ jobs:
         # is broken on current runner images with `Cannot find module 'promise-retry'`.
         run: npm --version
 
-      - name: Assert tag matches package version
+      - name: Sync manifest version to tag (tag is source of truth)
+        # semantic-release tags the commit but does not write
+        # openclaw/package.json, so the manifest lags on an automated release.
+        # Matches what publish-clawhub.yml already does.
         run: |
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
-          PKG_VERSION=$(node -p "require('./package.json').version")
-          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
-            echo "::error::Tag $TAG_VERSION does not match package.json version $PKG_VERSION"
-            exit 1
-          fi
+          V="${GITHUB_REF_NAME#v}"
+          for f in package.json openclaw.plugin.json .claude-plugin/plugin.json; do
+            [ -f "$f" ] || continue
+            node -e "const fs=require('fs'),p='$f',j=JSON.parse(fs.readFileSync(p));if('version' in j){j.version='$V';fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n');console.log('synced '+p+' -> $V')}"
+          done
+          echo "VERSION=$V" >> "$GITHUB_ENV"
         working-directory: openclaw
 
       - name: Install + build (compile TS so publish has dist/)
@@ -50,4 +57,8 @@ jobs:
         working-directory: openclaw
 
       - name: Verify
-        run: npm view trakt-tools version
+        run: |
+          sleep 10
+          PUBLISHED=$(npm view trakt-tools version)
+          echo "npm reports $PUBLISHED (expected $VERSION)"
+          [ "$PUBLISHED" = "$VERSION" ] || { echo "::error::npm still on $PUBLISHED"; exit 1; }

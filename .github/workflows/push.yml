@@ -81,6 +81,9 @@ jobs:
     needs: [build, test, lint, commitlint]
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -121,41 +124,23 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Publish OpenClaw plugin to NPM
+
+      # NPM and ClawHub are published by publish-npm.yml / publish-clawhub.yml,
+      # which npm's trusted publisher is bound to (the provenance attestation
+      # for 1.9.3 names .github/workflows/publish-npm.yml). Publishing from
+      # this workflow could never work: npm rejects OIDC from an unexpected
+      # workflow, and the old NODE_AUTH_TOKEN path failed with a misleading
+      # `E404 PUT https://registry.npmjs.org/trakt-tools`.
+      #
+      # Those workflows trigger on `push: tags`, which GitHub does NOT fire for
+      # a tag created with GITHUB_TOKEN -- so an automated semantic-release
+      # tag silently published nothing. Dispatch them explicitly instead.
+      - name: Publish plugin to NPM + ClawHub
         if: steps.semantic.outputs.new_release == 'true'
-        working-directory: openclaw
-        run: |
-          npm ci
-          npm version $(git describe --tags --abbrev=0 | sed 's/^v//') --no-git-tag-version --allow-same-version
-          npm publish --access public
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-      - name: Publish OpenClaw plugin to ClawHub
-        if: steps.semantic.outputs.new_release == 'true'
-        env:
-          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ steps.semantic.outputs.new_tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          npx clawhub auth login --token "$CLAWHUB_TOKEN" --no-browser
-
-          VERSION=$(node -p "require('./openclaw/package.json').version")
-          COMMIT=$(git rev-parse HEAD)
-
-          # Pull changelog from the GitHub Release that semantic-release
-          # just created. Falls back to a generic message if the release
-          # body isn't available yet (race with GitHub API propagation).
-          CHANGELOG=$(gh release view "$RELEASE_TAG" --json body -q '.body' 2>/dev/null \
-            | head -c 4000 || echo "Release $VERSION")
-
-          npx clawhub package publish openclaw \
-            --family code-plugin \
-            --name "trakt-tools" \
-            --display-name "Trakt" \
-            --version "$VERSION" \
-            --changelog "$CHANGELOG" \
-            --tags "latest" \
-            --source-repo "omarshahine/trakt-plugin" \
-            --source-commit "$COMMIT" \
-            --source-ref "main" \
-            --source-path "openclaw"
+          TAG="${{ steps.semantic.outputs.new_tag }}"
+          gh workflow run publish-npm.yml --ref "$TAG"
+          gh workflow run publish-clawhub.yml --ref "$TAG"
+          echo "Dispatched publish workflows for $TAG"
