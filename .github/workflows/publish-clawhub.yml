@@ -73,4 +73,24 @@ jobs:
             --source-path openclaw
 
       - name: Verify
-        run: clawhub package inspect trakt-tools
+        # `clawhub package inspect` prints whatever is currently PUBLIC and
+        # always exits 0. ClawHub publishing is async -- the publish step
+        # reports "Update submitted ... pending security scans before it
+        # becomes public" -- so immediately after publishing this printed the
+        # PREVIOUS version and passed. It could not tell a successful publish
+        # from a failed one. Poll until the expected version goes public.
+        env:
+          EXPECTED: ${{ steps.version.outputs.version }}
+        run: |
+          for attempt in $(seq 1 20); do
+            PUBLISHED=$(clawhub package inspect trakt-tools 2>/dev/null               | sed -n 's/^Latest:[[:space:]]*//p' | head -1)
+            echo "attempt $attempt: ClawHub reports '${PUBLISHED:-unknown}' (expecting $EXPECTED)"
+            if [ "$PUBLISHED" = "$EXPECTED" ]; then
+              echo "ClawHub published $EXPECTED"
+              exit 0
+            fi
+            sleep 30
+          done
+          echo "::error::ClawHub never published $EXPECTED (still on '${PUBLISHED:-unknown}' after 10 minutes)."
+          echo "::error::A publish can sit in security scanning; re-check before assuming failure."
+          exit 1
