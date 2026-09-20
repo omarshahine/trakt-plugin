@@ -7,7 +7,18 @@ on:
   # push.yml dispatches this after semantic-release cuts a tag. A tag created
   # with GITHUB_TOKEN does not fire `push: tags`, so without this an automated
   # release leaves the tap formula behind. Matches publish-npm.yml.
+  #
+  # ⚠️ `gh workflow run --ref <tag>` evaluates the workflow file AS OF that tag,
+  # so a tag cut before this trigger existed is not dispatchable at all. To bump
+  # the formula for such a tag, dispatch from a branch that has this file and
+  # pass the tag as `tag` — that is the only way to catch up a historical
+  # release. Tags cut from here on carry the trigger and need no input.
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish (e.g. v1.9.5). Defaults to the ref this runs on."
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -30,8 +41,14 @@ jobs:
       - name: Resolve version and tarball checksum
         id: meta
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          TARBALL="https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${GITHUB_REF_NAME}.tar.gz"
+          TAG="${{ inputs.tag }}"
+          TAG="${TAG:-$GITHUB_REF_NAME}"
+          case "$TAG" in
+            v[0-9]*) ;;
+            *) echo "::error::'$TAG' is not a release tag. Dispatch with tag=vX.Y.Z when running from a branch."; exit 1 ;;
+          esac
+          VERSION="${TAG#v}"
+          TARBALL="https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${TAG}.tar.gz"
           echo "Fetching $TARBALL"
           # Retry to absorb the brief delay before GitHub serves a fresh tag tarball.
           for attempt in 1 2 3 4 5; do
