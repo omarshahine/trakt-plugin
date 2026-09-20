@@ -4,11 +4,15 @@ on:
   push:
     tags:
       - "v*"
+  # push.yml dispatches this after semantic-release cuts a tag. A tag created
+  # with GITHUB_TOKEN does not fire `push: tags`, so without this an automated
+  # release leaves the tap formula behind. Matches publish-npm.yml.
+  workflow_dispatch:
 
 permissions:
   contents: read
 
-# Bumps the findmy-cli formula in omarshahine/homebrew-tap to the tag that
+# Bumps the trakt-cli formula in omarshahine/homebrew-tap to the tag that
 # triggered this run. The formula builds from the GitHub source tarball, so we
 # only need to update `url` and `sha256` — no bottle upload.
 #
@@ -17,7 +21,7 @@ permissions:
 # cannot push to a different repository.
 jobs:
   bump:
-    name: Bump findmy-cli formula
+    name: Bump trakt-cli formula
     runs-on: ubuntu-latest
     env:
       TAP_REPO: omarshahine/homebrew-tap
