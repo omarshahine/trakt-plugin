@@ -57,8 +57,15 @@ jobs:
         working-directory: openclaw
 
       - name: Verify
+        # The registry can take a minute or two to report a fresh publish;
+        # a single check right after `npm publish` failed v1.10.0 although
+        # the publish itself succeeded. Poll for up to ~2 minutes.
         run: |
-          sleep 10
-          PUBLISHED=$(npm view trakt-tools version)
-          echo "npm reports $PUBLISHED (expected $VERSION)"
-          [ "$PUBLISHED" = "$VERSION" ] || { echo "::error::npm still on $PUBLISHED"; exit 1; }
+          for attempt in $(seq 1 12); do
+            PUBLISHED=$(npm view trakt-tools version 2>/dev/null || true)
+            echo "attempt $attempt: npm reports ${PUBLISHED:-?} (expected $VERSION)"
+            [ "$PUBLISHED" = "$VERSION" ] && exit 0
+            sleep 10
+          done
+          echo "::error::npm still on ${PUBLISHED:-?} after ~2 minutes"
+          exit 1
