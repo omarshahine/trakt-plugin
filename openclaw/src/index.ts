@@ -16,6 +16,8 @@ interface PluginConfig {
 	cliPath?: string;
 	clientId?: string;
 	clientSecret?: string;
+	/** Opt-in: register trakt_sync. Off by default so existing installs are unchanged. */
+	syncEnabled?: boolean;
 }
 
 interface ToolDef {
@@ -25,6 +27,20 @@ interface ToolDef {
 	description: string;
 	parameters: ReturnType<typeof Type.Object>;
 }
+
+// Opt-in streaming sync tool. Registered only when pluginConfig.syncEnabled is
+// true; the CLI itself also stays inert without ~/.config/trakt-cli/sync.yaml.
+const SYNC_TOOL: ToolDef = {
+	name: 'trakt_sync',
+	command: 'sync',
+	description:
+		'Import watched items from streaming services (Apple TV Up Next, Netflix, HBO Max, Paramount+) into Trakt history, using the sync config at ~/.config/trakt-cli/sync.yaml. Skips denied titles, items older than the configured window, and anything already in history. Shows not yet in history and all movies are returned in pending_review and NOT written; ask the user before approving any. Use dry_run first to preview.',
+	parameters: Type.Object({
+		dry_run: Type.Optional(
+			Type.Boolean({ description: 'Preview what would be added without writing (default false)' })
+		),
+	}),
+};
 
 // Tool metadata — each maps to a CLI subcommand
 const TOOLS: ToolDef[] = [
@@ -306,6 +322,7 @@ export default definePluginEntry({
 
 	register(api) {
 		const config = api.pluginConfig as PluginConfig | undefined;
+		const tools = config?.syncEnabled ? [...TOOLS, SYNC_TOOL] : TOOLS;
 
 		let cliPath: string;
 		try {
@@ -314,7 +331,7 @@ export default definePluginEntry({
 			// Defer error to tool execution time — plugin still loads
 			const errorMessage = error instanceof Error ? error.message : String(error);
 
-			for (const tool of TOOLS) {
+			for (const tool of tools) {
 				api.registerTool({
 					name: tool.name,
 					label: tool.name,
@@ -330,7 +347,7 @@ export default definePluginEntry({
 			return;
 		}
 
-		for (const tool of TOOLS) {
+		for (const tool of tools) {
 			api.registerTool({
 				name: tool.name,
 				label: tool.name,
@@ -362,7 +379,8 @@ export default definePluginEntry({
 						// Follow-up: parallelize GetShowProgress loop or add a --filter
 						// flag so per-show progress checks don't hammer 50 API calls.
 						const { stdout } = await runCli(cliPath, args, {
-							timeout: 120_000,
+							// sync walks several services plus per-show history lookups.
+							timeout: tool.command === 'sync' ? 600_000 : 120_000,
 							maxBuffer: 4 * 1024 * 1024,
 						});
 
