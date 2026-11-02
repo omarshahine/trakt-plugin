@@ -127,7 +127,8 @@ func redactURL(u string) string {
 }
 
 var (
-	nonAlnum  = regexp.MustCompile(`[^a-z0-9 ]+`)
+	// Unicode letters and digits survive, so non-Latin titles stay distinct.
+	nonAlnum  = regexp.MustCompile(`[^\p{L}\p{N} ]+`)
 	articles  = regexp.MustCompile(`\b(the|a|an)\b`)
 	spaceRuns = regexp.MustCompile(`\s+`)
 )
