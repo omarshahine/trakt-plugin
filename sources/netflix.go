@@ -75,7 +75,7 @@ func (n *Netflix) switchProfile(ctx context.Context, jar Cookies, guid string) e
 	req.Header.Set("Cookie", jar.Header())
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return err
+		return redactErr(err)
 	}
 	resp.Body.Close()
 	for _, c := range resp.Cookies() {
