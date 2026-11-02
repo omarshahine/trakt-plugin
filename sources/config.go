@@ -147,6 +147,9 @@ func (c *Config) SinceDuration() (time.Duration, error) {
 // Denied reports whether a title is on the deny list.
 func (c *Config) Denied(title string) bool {
 	n := Normalize(title)
+	if n == "" {
+		return false
+	}
 	for _, d := range c.Deny {
 		if Normalize(d) == n {
 			return true
@@ -158,6 +161,9 @@ func (c *Config) Denied(title string) bool {
 // Allowed reports whether a title was approved for syncing.
 func (c *Config) Allowed(title string) bool {
 	n := Normalize(title)
+	if n == "" {
+		return false
+	}
 	for _, a := range c.Allow {
 		if Normalize(a) == n {
 			return true
@@ -169,6 +175,9 @@ func (c *Config) Allowed(title string) bool {
 // Override returns a pinned Trakt id for a title, if configured.
 func (c *Config) Override(title string) (int, bool) {
 	n := Normalize(title)
+	if n == "" {
+		return 0, false
+	}
 	for k, v := range c.Overrides {
 		if Normalize(k) == n {
 			return v, true

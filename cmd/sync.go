@@ -522,7 +522,7 @@ type resolved struct {
 func newResolver(c *api.APIClient, cfg *sources.Config) *resolver {
 	r := &resolver{client: c, cfg: cfg, cache: map[string]resolved{}, eps: map[int][]api.SeasonEpisodes{}}
 	if dir, err := os.UserCacheDir(); err == nil {
-		r.path = filepath.Join(dir, "trakt-cli", "sync-map.json")
+		r.path = filepath.Join(dir, "trakt-cli", "sync-map-v2.json") // v2: ambiguity-aware; v1 entries may be first-match guesses
 		if b, err := os.ReadFile(r.path); err == nil {
 			_ = json.Unmarshal(b, &r.cache)
 		}
@@ -563,7 +563,14 @@ func (r *resolver) lookup(kind, title string, year int) (int, string, bool) {
 		return 0, "", false
 	}
 	want := sources.Normalize(title)
+	if want == "" {
+		return 0, "", false
+	}
+	// Collect every exact match. Remakes and reboots share titles, and most
+	// sources report no year, so more than one distinct id is ambiguous:
+	// leave it unresolved (pin it with overrides) rather than guess.
 	var match *resolved
+	ambiguous := false
 	for _, s := range results {
 		var t string
 		var y, id int
@@ -578,10 +585,13 @@ func (r *resolver) lookup(kind, title string, year int) (int, string, bool) {
 		if sources.Normalize(t) != want || (year != 0 && y != year) {
 			continue
 		}
+		if match != nil && match.ID != id {
+			ambiguous = true
+			break
+		}
 		match = &resolved{ID: id, Title: t}
-		break
 	}
-	if match == nil {
+	if match == nil || ambiguous {
 		return 0, "", false
 	}
 	r.cache[key] = *match
