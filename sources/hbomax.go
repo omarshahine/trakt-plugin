@@ -172,7 +172,11 @@ func (h *HBOMax) completed(get func(string, interface{}) error, show *hboEntity)
 					url.PathEscape(c.ID), url.QueryEscape(show.ID), url.QueryEscape(fmt.Sprint(opt.Value)))
 				// Seasons page at 100 episodes (data.meta.itemsTotalPages);
 				// walk every page so long seasons are complete.
-				for pageNum, total := 1, 1; pageNum <= total && pageNum <= hboMaxPages; pageNum++ {
+				total := 1
+				for pageNum := 1; pageNum <= total; pageNum++ {
+					if pageNum > hboMaxPages {
+						return out, fmt.Errorf("hbomax: season has %d pages, stopped at %d (results incomplete)", total, hboMaxPages)
+					}
 					var season hboDoc
 					pq := q
 					if pageNum > 1 {
@@ -182,7 +186,10 @@ func (h *HBOMax) completed(get func(string, interface{}) error, show *hboEntity)
 						return out, err
 					}
 					add(season)
-					total = season.totalPages()
+					// Keep the last known total if a later page omits it.
+					if t := season.totalPages(); t > 0 {
+						total = t
+					}
 				}
 			}
 		}
@@ -224,7 +231,7 @@ type hboDoc struct {
 // hboMaxPages bounds paging per season as a guard against a bad total.
 const hboMaxPages = 50
 
-// totalPages reads data.meta.itemsTotalPages; 1 when absent.
+// totalPages reads data.meta.itemsTotalPages; 0 when absent or unreadable.
 func (d hboDoc) totalPages() int {
 	var data struct {
 		Meta struct {
@@ -232,7 +239,7 @@ func (d hboDoc) totalPages() int {
 		} `json:"meta"`
 	}
 	if len(d.Data) == 0 || json.Unmarshal(d.Data, &data) != nil || data.Meta.ItemsTotalPages < 1 {
-		return 1
+		return 0
 	}
 	return data.Meta.ItemsTotalPages
 }

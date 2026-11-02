@@ -34,6 +34,9 @@ func (p *Paramount) Fetch(ctx context.Context) ([]Watch, error) {
 		if err != nil {
 			return nil, err
 		}
+		if who.Status != 200 {
+			return nil, fmt.Errorf("paramount+: profile lookup returned HTTP %d", who.Status)
+		}
 		active, err := ParseParamountActiveProfile(who.Body)
 		if err != nil {
 			return nil, err
@@ -57,11 +60,12 @@ func (p *Paramount) Fetch(ctx context.Context) ([]Watch, error) {
 // /user-profile/xhr/user/.
 func ParseParamountActiveProfile(body []byte) (string, error) {
 	var doc struct {
+		Success       *bool `json:"success"`
 		ActiveProfile *struct {
 			Name string `json:"name"`
 		} `json:"activeProfile"`
 	}
-	if err := json.Unmarshal(body, &doc); err != nil || doc.ActiveProfile == nil || doc.ActiveProfile.Name == "" {
+	if err := json.Unmarshal(body, &doc); err != nil || (doc.Success != nil && !*doc.Success) || doc.ActiveProfile == nil || doc.ActiveProfile.Name == "" {
 		return "", fmt.Errorf("paramount+: could not read the active profile (signed in?)")
 	}
 	return doc.ActiveProfile.Name, nil
