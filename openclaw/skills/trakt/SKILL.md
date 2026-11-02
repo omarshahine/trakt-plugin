@@ -131,6 +131,7 @@ trakt-cli search "Inception" --type movie --json
 
 ## Changelog
 
+- **v2.3.0** — Add opt-in `sync` (`trakt_sync` tool, only when `syncEnabled`): imports watched items from Apple TV Up Next, Netflix, HBO Max and Paramount+ with a deny list, profile checks, and a `pending_review` queue (`sync approve` / `sync deny`) for new shows, movies and implied episodes
 - **v2.0.0** — Add `progress` command, `--json` flag for all commands (agent-friendly output)
 - **v1.1.0** — Add `watchlist` command, `--type` filter for `history`, `history add` with `--watched-at`
 - **v1.0.0** — Initial skill (upstream `history` and `search` only)
