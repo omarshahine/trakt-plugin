@@ -168,13 +168,22 @@ func (h *HBOMax) completed(get func(string, interface{}) error, show *hboEntity)
 		}
 		for _, f := range c.Attributes.Component.Filters {
 			for _, opt := range f.Options {
-				var season hboDoc
 				q := fmt.Sprintf("/cms/collections/%s?include=default&decorators=viewingHistory&pf[show.id]=%s&pf[seasonNumber]=%s",
 					url.PathEscape(c.ID), url.QueryEscape(show.ID), url.QueryEscape(fmt.Sprint(opt.Value)))
-				if err := get(q, &season); err != nil {
-					return out, err
+				// Seasons page at 100 episodes (data.meta.itemsTotalPages);
+				// walk every page so long seasons are complete.
+				for pageNum, total := 1, 1; pageNum <= total && pageNum <= hboMaxPages; pageNum++ {
+					var season hboDoc
+					pq := q
+					if pageNum > 1 {
+						pq += fmt.Sprintf("&page[items.number]=%d", pageNum)
+					}
+					if err := get(pq, &season); err != nil {
+						return out, err
+					}
+					add(season)
+					total = season.totalPages()
 				}
-				add(season)
 			}
 		}
 	}
@@ -208,6 +217,24 @@ type hboEntity struct {
 
 type hboDoc struct {
 	Included []hboEntity `json:"included"`
+	// Data is a collection or route; only its paging meta is read.
+	Data json.RawMessage `json:"data"`
+}
+
+// hboMaxPages bounds paging per season as a guard against a bad total.
+const hboMaxPages = 50
+
+// totalPages reads data.meta.itemsTotalPages; 1 when absent.
+func (d hboDoc) totalPages() int {
+	var data struct {
+		Meta struct {
+			ItemsTotalPages int `json:"itemsTotalPages"`
+		} `json:"meta"`
+	}
+	if len(d.Data) == 0 || json.Unmarshal(d.Data, &data) != nil || data.Meta.ItemsTotalPages < 1 {
+		return 1
+	}
+	return data.Meta.ItemsTotalPages
 }
 
 func (d hboDoc) findShow(name string) *hboEntity {

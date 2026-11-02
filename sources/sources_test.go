@@ -1,6 +1,7 @@
 package sources
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -236,5 +237,37 @@ func TestParamountRejectsBadNumbers(t *testing.T) {
 	}
 	if len(w) != 1 || w[0].ShowTitle != "Good Show" {
 		t.Errorf("got %+v", w)
+	}
+}
+
+func TestHBOCompletedWalksSeasonPages(t *testing.T) {
+	video := func(s, e int, done bool) string {
+		return fmt.Sprintf(`{"type":"video","id":"v%d%d","attributes":{"videoType":"EPISODE","seasonNumber":%d,"episodeNumber":%d,"viewingHistory":{"completed":%t}}}`, s, e, s, e, done)
+	}
+	showPage := `{"included":[{"type":"collection","id":"col1","attributes":{"name":"generic-show-page-rail-episodes-tabbed-content","component":{"filters":[{"options":[{"value":"1"}]}]}}}]}`
+	page1 := `{"data":{"meta":{"itemsCurrentPage":1,"itemsTotalPages":2}},"included":[` + video(1, 1, true) + `,` + video(1, 2, false) + `]}`
+	page2 := `{"data":{"meta":{"itemsCurrentPage":2,"itemsTotalPages":2}},"included":[` + video(1, 3, true) + `]}`
+	var calls []string
+	get := func(path string, v interface{}) error {
+		calls = append(calls, path)
+		body := showPage
+		switch {
+		case strings.Contains(path, "page[items.number]=2"):
+			body = page2
+		case strings.Contains(path, "/cms/collections/"):
+			body = page1
+		}
+		return json.Unmarshal([]byte(body), v)
+	}
+	show := &hboEntity{ID: "show1", Type: "show"}
+	got, err := (&HBOMax{}).completed(get, show)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fmt.Sprint(got) != "[[1 1] [1 3]]" {
+		t.Errorf("completed = %v (calls %v)", got, calls)
+	}
+	if len(calls) != 3 {
+		t.Errorf("want show page + 2 season pages, got %d calls: %v", len(calls), calls)
 	}
 }
