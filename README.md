@@ -211,12 +211,12 @@ Sources:
 
 | Source | What it reads |
 |--------|---------------|
-| `upnext` | Apple TV app Up Next via tv.apple.com. Covers apps that report to the TV app (Apple TV+, iTunes, Paramount+, Hulu, HBO Max, Peacock, Prime Video) on all your Apple devices. Episodes before each "next up" pointer count as watched |
+| `upnext` | Apple TV app Up Next via tv.apple.com. Covers apps that report to the TV app (Apple TV+, iTunes, Paramount+, Hulu, HBO Max, Peacock, Prime Video) on all your Apple devices. "Next episode" at E*n* confirms E*n*−1; other earlier episodes are only implied and go to review |
 | `netflix` | Viewing Activity for one profile (accounts are shared, so set `profile`) |
 | `hbomax` | Per-episode completion for shows seen in Up Next or HBO Max's Continue Watching; verifies the session is on `profile` |
 | `paramount` | Keep Watching row; an episode at or past `min_progress` percent counts as watched |
 
-Safety rules, in order: titles on `deny` are dropped; items older than `since` are dropped; items already in your history are skipped. Shows you already have plays for sync automatically. **Any other show, and every movie, is held for review** (listed as "Needs your review", nothing written) until you `approve` it, so someone else using your account never lands in your history.
+Safety rules, in order: titles on `deny` are dropped; items older than `since` are dropped; items already in your history are skipped. Confirmed watches of shows you already have plays for sync automatically. **Any other show, every movie, and any episode that is only implied (for example skipped-over episodes before an Up Next pointer) is held for review** (listed as "Needs your review", nothing written) until you `approve` it, so someone else using your account never lands in your history.
 
 Config (`~/.config/trakt-cli/sync.yaml`, or `TRAKT_SYNC_CONFIG`):
 
@@ -241,7 +241,7 @@ sources:
 | `--config` | Config path | `~/.config/trakt-cli/sync.yaml` |
 | `--max-new-show-episodes` | Skip an approved never-logged show if more episodes than this would be added | 25 |
 
-Exit status is non-zero when any source fails (other sources still sync), which suits a scheduled job.
+Exit status is non-zero when any source fails (other sources still sync), which suits a scheduled job. Same-title matches (remakes, reboots) are left unresolved rather than guessed; pin them with `overrides: {"Title": <trakt id>}`.
 
 ## AI Agent Plugins
 
