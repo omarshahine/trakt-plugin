@@ -515,6 +515,9 @@ type resolver struct {
 	cache  map[string]resolved
 	dirty  bool
 	eps    map[int][]api.SeasonEpisodes
+	// owned holds Trakt ids the user already has plays for, per kind,
+	// loaded lazily to break same-title ties.
+	owned map[string]map[int]bool
 }
 
 type resolved struct {
@@ -570,10 +573,11 @@ func (r *resolver) lookup(kind, title string, year int) (int, string, bool) {
 		return 0, "", false
 	}
 	// Collect every exact match. Remakes and reboots share titles, and most
-	// sources report no year, so more than one distinct id is ambiguous:
-	// leave it unresolved (pin it with overrides) rather than guess.
-	var match *resolved
-	ambiguous := false
+	// sources report no year. With several distinct ids, prefer the single
+	// one the user already has plays for; otherwise leave it unresolved (pin
+	// it with overrides) rather than guess.
+	var cands []resolved
+	seenID := map[int]bool{}
 	for _, s := range results {
 		var t string
 		var y, id int
@@ -585,21 +589,64 @@ func (r *resolver) lookup(kind, title string, year int) (int, string, bool) {
 		default:
 			continue
 		}
-		if sources.Normalize(t) != want || (year != 0 && y != year) {
+		if sources.Normalize(t) != want || (year != 0 && y != year) || seenID[id] {
 			continue
 		}
-		if match != nil && match.ID != id {
-			ambiguous = true
-			break
-		}
-		match = &resolved{ID: id, Title: t}
+		seenID[id] = true
+		cands = append(cands, resolved{ID: id, Title: t})
 	}
-	if match == nil || ambiguous {
+	var match *resolved
+	switch {
+	case len(cands) == 1:
+		match = &cands[0]
+	case len(cands) > 1:
+		owned := r.ownedIDs(kind)
+		var mine []resolved
+		for _, c := range cands {
+			if owned[c.ID] {
+				mine = append(mine, c)
+			}
+		}
+		if len(mine) == 1 {
+			match = &mine[0]
+		}
+	}
+	if match == nil {
 		return 0, "", false
 	}
 	r.cache[key] = *match
 	r.dirty = true
 	return match.ID, match.Title, true
+}
+
+// ownedIDs returns the Trakt ids the user already has plays for. A failed
+// lookup yields an empty set, which keeps ambiguous titles unresolved.
+func (r *resolver) ownedIDs(kind string) map[int]bool {
+	if r.owned == nil {
+		r.owned = map[string]map[int]bool{}
+	}
+	if ids, ok := r.owned[kind]; ok {
+		return ids
+	}
+	ids := map[int]bool{}
+	switch kind {
+	case "show":
+		if slug, err := r.client.GetUserSlug(); err == nil {
+			if watched, err := r.client.GetUserWatched(slug, "shows"); err == nil {
+				for _, w := range watched {
+					if w.Show != nil {
+						ids[w.Show.Ids.Trakt] = true
+					}
+				}
+			}
+		}
+	case "movie":
+		if seen, err := watchedMovieIDs(r.client); err == nil {
+			ids = seen
+		}
+	}
+	r.owned[kind] = ids
+	return ids
 }
 
 func (r *resolver) episodeByTitle(showID, season int, title string) int {
