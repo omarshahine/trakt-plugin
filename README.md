@@ -214,7 +214,7 @@ Sources:
 | `upnext` | Apple TV app Up Next via tv.apple.com. Covers apps that report to the TV app (Apple TV+, iTunes, Paramount+, Hulu, HBO Max, Peacock, Prime Video) on all your Apple devices. "Next episode" at E*n* confirms E*n*−1; other earlier episodes are only implied and go to review |
 | `netflix` | Viewing Activity for one profile (accounts are shared, so set `profile`) |
 | `hbomax` | Per-episode completion for shows seen in Up Next or HBO Max's Continue Watching; verifies the session is on `profile` |
-| `paramount` | Keep Watching row; an episode at or past `min_progress` percent counts as watched |
+| `paramount` | Keep Watching row; an episode at or past `min_progress` percent counts as watched; verifies the session is on `profile` |
 
 Safety rules, in order: titles on `deny` are dropped; items older than `since` are dropped; items already in your history are skipped. Confirmed watches of shows you already have plays for sync automatically. **Any other show, every movie, and any episode that is only implied (for example skipped-over episodes before an Up Next pointer) is held for review** (listed as "Needs your review", nothing written) until you `approve` it, so someone else using your account never lands in your history.
 
@@ -231,7 +231,7 @@ sources:
   upnext:    { enabled: true }
   netflix:   { enabled: true, profile: "Your Profile" }
   hbomax:    { enabled: true, profile: "Your Profile" }
-  paramount: { enabled: true, min_progress: 80 }
+  paramount: { enabled: true, profile: "Your Profile", min_progress: 80 }
 ```
 
 | Flag | Description | Default |

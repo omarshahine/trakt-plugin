@@ -271,3 +271,13 @@ func TestHBOCompletedWalksSeasonPages(t *testing.T) {
 		t.Errorf("want show page + 2 season pages, got %d calls: %v", len(calls), calls)
 	}
 }
+
+func TestParamountActiveProfile(t *testing.T) {
+	name, err := ParseParamountActiveProfile([]byte(`{"success":true,"profiles":[{"name":"A"},{"name":"B"}],"activeProfile":{"id":1,"name":"B","isMasterProfile":false}}`))
+	if err != nil || name != "B" {
+		t.Fatalf("got %q, %v", name, err)
+	}
+	if _, err := ParseParamountActiveProfile([]byte(`{"success":false}`)); err == nil {
+		t.Error("missing activeProfile must be an error")
+	}
+}

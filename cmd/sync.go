@@ -158,7 +158,7 @@ func runSync(cmd *cobra.Command, _ []string) error {
 		run(&sources.HBOMax{Cookies: cookies, Profile: cfg.Sources.HBOMax.Profile, Candidates: upnext.Unlabeled})
 	}
 	if want["paramount"] {
-		run(&sources.Paramount{Cookies: cookies, MinProgress: cfg.Sources.Paramount.MinProgress})
+		run(&sources.Paramount{Cookies: cookies, MinProgress: cfg.Sources.Paramount.MinProgress, Profile: cfg.Sources.Paramount.Profile})
 	}
 
 	// Filter: deny list and age window. Unknown times become "now".

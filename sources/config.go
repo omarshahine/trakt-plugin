@@ -52,6 +52,8 @@ type Config struct {
 			// MinProgress is the percent at which an in-progress episode
 			// counts as watched. Default 80, matching Trakt's scrobble rule.
 			MinProgress int `yaml:"min_progress"`
+			// Profile must be the active Paramount+ profile, if set.
+			Profile string `yaml:"profile"`
 		} `yaml:"paramount"`
 	} `yaml:"sources"`
 }

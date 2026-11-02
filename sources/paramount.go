@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 )
 
 // Paramount reads Paramount+'s Keep Watching row: one in-progress title per
@@ -15,6 +16,9 @@ import (
 type Paramount struct {
 	Cookies     CookieLoader
 	MinProgress int
+	// Profile is the profile name that must be active (accounts are
+	// shared). Empty skips the check.
+	Profile string
 }
 
 func (p *Paramount) Name() string { return "paramount" }
@@ -23,6 +27,20 @@ func (p *Paramount) Fetch(ctx context.Context) ([]Watch, error) {
 	jar, err := p.Cookies(ctx, ".paramountplus.com")
 	if err != nil {
 		return nil, err
+	}
+	if p.Profile != "" {
+		who, err := fetch(ctx, "https://www.paramountplus.com/user-profile/xhr/user/",
+			map[string]string{"Cookie": jar.Header(), "Accept": "application/json"})
+		if err != nil {
+			return nil, err
+		}
+		active, err := ParseParamountActiveProfile(who.Body)
+		if err != nil {
+			return nil, err
+		}
+		if !strings.EqualFold(active, p.Profile) {
+			return nil, fmt.Errorf("paramount+: session is on profile %q, not %q (switch profile in the browser)", active, p.Profile)
+		}
 	}
 	resp, err := fetch(ctx, "https://www.paramountplus.com/carousels/homepage/keepwatching/offset/0/limit/50/",
 		map[string]string{"Cookie": jar.Header(), "Accept": "application/json"})
@@ -33,6 +51,20 @@ func (p *Paramount) Fetch(ctx context.Context) ([]Watch, error) {
 		return nil, fmt.Errorf("paramount+: HTTP %d", resp.Status)
 	}
 	return ParseParamount(resp.Body, p.MinProgress)
+}
+
+// ParseParamountActiveProfile returns the active profile's name from
+// /user-profile/xhr/user/.
+func ParseParamountActiveProfile(body []byte) (string, error) {
+	var doc struct {
+		ActiveProfile *struct {
+			Name string `json:"name"`
+		} `json:"activeProfile"`
+	}
+	if err := json.Unmarshal(body, &doc); err != nil || doc.ActiveProfile == nil || doc.ActiveProfile.Name == "" {
+		return "", fmt.Errorf("paramount+: could not read the active profile (signed in?)")
+	}
+	return doc.ActiveProfile.Name, nil
 }
 
 // ParseParamount decodes the keep-watching carousel.
