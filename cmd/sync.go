@@ -61,6 +61,8 @@ type syncPlanned struct {
 	WatchedAt string `json:"watched_at"`
 	Source    string `json:"source"`
 	Inferred  bool   `json:"inferred,omitempty"`
+	// NeedsReview: evidence too weak to write without approval.
+	NeedsReview bool `json:"needs_review,omitempty"`
 }
 
 type syncPending struct {
@@ -215,9 +217,10 @@ func runSync(cmd *cobra.Command, _ []string) error {
 			showTitles[id] = title
 			k := epKey{id, w.Season, ep}
 			p := syncPlanned{Kind: "episode", Title: title, TraktID: id, Season: w.Season, Episode: ep,
-				WatchedAt: w.WatchedAt.UTC().Format(time.RFC3339), Source: w.Source, Inferred: w.Inferred}
-			// Prefer a directly reported play over an inferred one, then the earliest time.
-			if prev, dup := episodes[k]; !dup || (prev.Inferred && !p.Inferred) || (prev.Inferred == p.Inferred && p.WatchedAt < prev.WatchedAt) {
+				WatchedAt: w.WatchedAt.UTC().Format(time.RFC3339), Source: w.Source, Inferred: w.Inferred, NeedsReview: w.NeedsReview}
+			// Prefer stronger evidence (confirmed over needs-review, direct over
+			// inferred), then the earliest time.
+			if prev, dup := episodes[k]; !dup || evidenceRank(p) > evidenceRank(prev) || (evidenceRank(p) == evidenceRank(prev) && p.WatchedAt < prev.WatchedAt) {
 				episodes[k] = p
 			}
 		}
@@ -247,6 +250,23 @@ func runSync(cmd *cobra.Command, _ []string) error {
 				rep.PendingReview = append(rep.PendingReview, pendingFrom("show", showTitles[id], fresh))
 			}
 			continue
+		}
+		// Known show: weak evidence (e.g. episodes implied by an Up Next
+		// pointer) still needs approval, so a skipped episode or someone
+		// else's viewing is never written automatically.
+		if !cfg.Allowed(showTitles[id]) {
+			var auto, weak []syncPlanned
+			for _, p := range fresh {
+				if p.NeedsReview {
+					weak = append(weak, p)
+				} else {
+					auto = append(auto, p)
+				}
+			}
+			if len(weak) > 0 {
+				rep.PendingReview = append(rep.PendingReview, pendingFrom("show", showTitles[id], weak))
+			}
+			fresh = auto
 		}
 		if len(watched) == 0 && maxNew > 0 && len(fresh) > maxNew {
 			rep.Capped = append(rep.Capped, fmt.Sprintf("%s (%d episodes; raise --max-new-show-episodes to import)", showTitles[id], len(fresh)))
@@ -309,6 +329,16 @@ func runSync(cmd *cobra.Command, _ []string) error {
 		}
 	}
 	return nil
+}
+
+func evidenceRank(p syncPlanned) int {
+	switch {
+	case p.NeedsReview:
+		return 0
+	case p.Inferred:
+		return 1
+	}
+	return 2
 }
 
 func pendingFrom(kind, title string, items []syncPlanned) syncPending {
