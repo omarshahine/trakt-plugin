@@ -19,6 +19,7 @@ openclaw plugins install -l ./openclaw
 | `main.go` | Go CLI entry point |
 | `cmd/` | CLI command implementations |
 | `api/` | Trakt API client (Go) |
+| `sources/` | Opt-in streaming connectors for `trakt-cli sync` (Up Next, Netflix, HBO Max, Paramount+). Read-only; inert without `~/.config/trakt-cli/sync.yaml`. Test fixtures must be synthetic |
 | `openclaw/` | OpenClaw plugin package (ClawHub: trakt-tools) |
 | `openclaw/src/index.ts` | OpenClaw tool registration |
 | `.claude-plugin/` | Claude Code plugin manifest |

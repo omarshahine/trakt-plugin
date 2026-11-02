@@ -98,6 +98,21 @@ trakt-cli history add --rewatch "Severance" --json
   and exits 1 with `{"error": ..., "retry_after": N}` (marker also on
   stderr) — wait out `retry_after` before calling any trakt tool again
 
+### Streaming Sync (opt-in)
+
+Only if the user has set up `~/.config/trakt-cli/sync.yaml` (otherwise `sync` reports `"enabled": false` and does nothing).
+
+```bash
+trakt-cli sync --dry-run --json
+trakt-cli sync --json
+trakt-cli sync approve "Title"
+trakt-cli sync deny "Title"
+```
+
+- JSON output: `{ "enabled", "sources": {name: {items, error}}, "planned", "pending_review", "skipped_denied", "skipped_old", "already_watched", "unresolved", "added" }`
+- Confirmed episodes of shows already in history sync automatically; new shows, all movies, and implied episodes (e.g. skipped ones before an Up Next pointer) land in `pending_review` and are NOT written. Ask the user before running `sync approve` for any title; never approve on their behalf
+- Use `sync deny` for titles the user says belong to someone else
+
 ### Search
 
 ```bash

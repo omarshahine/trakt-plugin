@@ -18,6 +18,11 @@
       "clientSecret": {
         "type": "string",
         "description": "Trakt API client secret"
+      },
+      "syncEnabled": {
+        "type": "boolean",
+        "description": "Opt in to the trakt_sync tool (imports from streaming services). Off by default.",
+        "default": false
       }
     },
     "additionalProperties": false
@@ -37,6 +42,10 @@
       "label": "Client Secret",
       "help": "Trakt API client secret from https://trakt.tv/oauth/applications",
       "sensitive": true
+    },
+    "syncEnabled": {
+      "label": "Enable streaming sync",
+      "help": "Registers trakt_sync. Also requires ~/.config/trakt-cli/sync.yaml with enabled: true; see `trakt-cli sync --help`."
     }
   },
   "contracts": {
@@ -50,7 +59,8 @@
       "trakt_watchlist_remove",
       "trakt_calendar",
       "trakt_progress",
-      "trakt_auth"
+      "trakt_auth",
+      "trakt_sync"
     ]
   }
 }

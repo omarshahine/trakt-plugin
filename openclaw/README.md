@@ -25,6 +25,7 @@ Or set `TRAKT_CLI_PATH` environment variable, or configure `cliPath` in plugin s
 | `cliPath` | Path to trakt-cli binary (auto-detected on PATH) |
 | `clientId` | Trakt API client ID (from https://trakt.tv/oauth/applications) |
 | `clientSecret` | Trakt API client secret |
+| `syncEnabled` | Register the opt-in `trakt_sync` tool (default `false`) |
 
 ## Available Tools
 
@@ -36,6 +37,7 @@ Or set `TRAKT_CLI_PATH` environment variable, or configure `cliPath` in plugin s
 | `trakt_watchlist` | View watchlist |
 | `trakt_progress` | Show watch progress for TV shows |
 | `trakt_auth` | Set up Trakt.tv authentication |
+| `trakt_sync` | Opt-in: import from streaming services (only when `syncEnabled`) |
 
 ## License
 

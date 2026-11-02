@@ -12,12 +12,12 @@ import (
 
 // refreshOutput is the --json payload for scripts/launchd consumers.
 type refreshOutput struct {
-	OK           bool   `json:"ok"`
-	RefreshedAt  string `json:"refreshed_at"`
-	UserSlug     string `json:"user_slug,omitempty"`
-	HasRefresh   bool   `json:"has_refresh_token"`
-	Error        string `json:"error,omitempty"`
-	NextRunHint  string `json:"next_run_hint,omitempty"`
+	OK          bool   `json:"ok"`
+	RefreshedAt string `json:"refreshed_at"`
+	UserSlug    string `json:"user_slug,omitempty"`
+	HasRefresh  bool   `json:"has_refresh_token"`
+	Error       string `json:"error,omitempty"`
+	NextRunHint string `json:"next_run_hint,omitempty"`
 }
 
 var refreshCmd = &cobra.Command{

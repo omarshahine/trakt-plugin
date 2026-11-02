@@ -6,11 +6,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/omarshahine/trakt-plugin/api"
 	"github.com/briandowns/spinner"
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/mergestat/timediff"
 	"github.com/muesli/termenv"
+	"github.com/omarshahine/trakt-plugin/api"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -59,24 +59,7 @@ var historyCmd = &cobra.Command{
 		s.Stop()
 
 		if jsonOutput {
-			type jsonHistItem struct {
-				Type      string `json:"type"`
-				Title     string `json:"title"`
-				Year      int    `json:"year,omitempty"`
-				Season    int    `json:"season,omitempty"`
-				Episode   int    `json:"episode,omitempty"`
-				ShowTitle string `json:"show_title,omitempty"`
-				WatchedAt string `json:"watched_at"`
-			}
-			var items []jsonHistItem
-			for _, v := range resp {
-				switch v.Type {
-				case "movie":
-					items = append(items, jsonHistItem{Type: "movie", Title: v.Movie.Title, Year: v.Movie.Year, WatchedAt: v.WatchedAt.Format(time.RFC3339)})
-				case "episode":
-					items = append(items, jsonHistItem{Type: "episode", Title: v.Episode.Title, Season: v.Episode.Season, Episode: v.Episode.Number, ShowTitle: v.Show.Title, WatchedAt: v.WatchedAt.Format(time.RFC3339)})
-				}
-			}
+			items := historyJSONItems(resp)
 			enc := json.NewEncoder(os.Stdout)
 			enc.SetIndent("", "  ")
 			_ = enc.Encode(map[string]interface{}{"items": items, "page": pagination.Page, "page_count": pagination.PageCount, "item_count": pagination.ItemCount})
@@ -133,4 +116,31 @@ func init() {
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:
 	// historyCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+}
+
+// jsonHistItem is one row of `history --json`. Season and Episode are
+// pointers so season 0 (specials) still serializes; omitempty on a plain int
+// dropped it. Movies leave both nil.
+type jsonHistItem struct {
+	Type      string `json:"type"`
+	Title     string `json:"title"`
+	Year      int    `json:"year,omitempty"`
+	Season    *int   `json:"season,omitempty"`
+	Episode   *int   `json:"episode,omitempty"`
+	ShowTitle string `json:"show_title,omitempty"`
+	WatchedAt string `json:"watched_at"`
+}
+
+func historyJSONItems(resp api.UserHistory) []jsonHistItem {
+	var items []jsonHistItem
+	for _, v := range resp {
+		switch v.Type {
+		case "movie":
+			items = append(items, jsonHistItem{Type: "movie", Title: v.Movie.Title, Year: v.Movie.Year, WatchedAt: v.WatchedAt.Format(time.RFC3339)})
+		case "episode":
+			season, number := v.Episode.Season, v.Episode.Number
+			items = append(items, jsonHistItem{Type: "episode", Title: v.Episode.Title, Season: &season, Episode: &number, ShowTitle: v.Show.Title, WatchedAt: v.WatchedAt.Format(time.RFC3339)})
+		}
+	}
+	return items
 }

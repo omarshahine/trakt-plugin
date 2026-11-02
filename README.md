@@ -196,11 +196,58 @@ trakt-cli progress --all --json
 |------|-------------|---------|
 | `--all` | Include not_started and completed | in-progress only |
 
+### sync (opt-in)
+
+Imports what you watched on streaming services into your Trakt history, using your own signed-in browser sessions. **Off by default**: it does nothing until you create a config file, so existing installs are unaffected.
+
+```bash
+trakt-cli sync --dry-run          # preview
+trakt-cli sync                    # write
+trakt-cli sync approve "Title"    # allow a held title
+trakt-cli sync deny "Title"       # never sync a title
+```
+
+Sources:
+
+| Source | What it reads |
+|--------|---------------|
+| `upnext` | Apple TV app Up Next via tv.apple.com. Covers apps that report to the TV app (Apple TV+, iTunes, Paramount+, Hulu, HBO Max, Peacock, Prime Video) on all your Apple devices. "Next episode" at E*n* confirms E*n*−1; other earlier episodes are only implied and go to review |
+| `netflix` | Viewing Activity for one profile (accounts are shared, so set `profile`) |
+| `hbomax` | Per-episode completion for shows seen in Up Next or HBO Max's Continue Watching; verifies the session is on `profile` |
+| `paramount` | Keep Watching row; an episode at or past `min_progress` percent counts as watched |
+
+Safety rules, in order: titles on `deny` are dropped; items older than `since` are dropped; items already in your history are skipped. Confirmed watches of shows you already have plays for sync automatically. **Any other show, every movie, and any episode that is only implied (for example skipped-over episodes before an Up Next pointer) is held for review** (listed as "Needs your review", nothing written) until you `approve` it, so someone else using your account never lands in your history.
+
+Config (`~/.config/trakt-cli/sync.yaml`, or `TRAKT_SYNC_CONFIG`):
+
+```yaml
+enabled: true
+# Prints cookies for a domain. JSON [{name,value}] or a "a=b; c=d" header.
+cookie_command: "my-cookie-tool --json --domain {domain}"
+since: 30d
+deny: []      # other household members' shows
+allow: []     # titles you approved (managed by `sync approve`)
+sources:
+  upnext:    { enabled: true }
+  netflix:   { enabled: true, profile: "Your Profile" }
+  hbomax:    { enabled: true, profile: "Your Profile" }
+  paramount: { enabled: true, min_progress: 80 }
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--dry-run` | Preview without writing | off |
+| `--source` | Only run these sources | all enabled |
+| `--config` | Config path | `~/.config/trakt-cli/sync.yaml` |
+| `--max-new-show-episodes` | Skip an approved never-logged show if more episodes than this would be added | 25 |
+
+Exit status is non-zero when any source fails (other sources still sync), which suits a scheduled job. Same-title matches (remakes, reboots) are left unresolved rather than guessed; pin them with `overrides: {"Title": <trakt id>}`.
+
 ## AI Agent Plugins
 
 ### OpenClaw
 
-The `openclaw/` directory contains a native OpenClaw plugin that registers typed tools: `trakt_search`, `trakt_history`, `trakt_history_add`, `trakt_history_remove`, `trakt_watchlist`, `trakt_watchlist_add`, `trakt_watchlist_remove`, `trakt_calendar`, `trakt_progress`, and `trakt_auth`.
+The `openclaw/` directory contains a native OpenClaw plugin that registers typed tools: `trakt_search`, `trakt_history`, `trakt_history_add`, `trakt_history_remove`, `trakt_watchlist`, `trakt_watchlist_add`, `trakt_watchlist_remove`, `trakt_calendar`, `trakt_progress`, and `trakt_auth`. The opt-in `trakt_sync` tool is registered only when `syncEnabled` is true.
 
 Install from ClawHub:
 ```bash
@@ -216,6 +263,7 @@ Configuration (via OpenClaw settings):
 - `cliPath`: Path to trakt-cli binary (auto-detected on PATH)
 - `clientId`: Trakt API client ID
 - `clientSecret`: Trakt API client secret
+- `syncEnabled`: register the opt-in `trakt_sync` tool (default `false`; also needs the sync config above)
 
 ### Claude Code
 
