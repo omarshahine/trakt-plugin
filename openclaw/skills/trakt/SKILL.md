@@ -110,7 +110,7 @@ trakt-cli sync deny "Title"
 ```
 
 - JSON output: `{ "enabled", "sources": {name: {items, error}}, "planned", "pending_review", "skipped_denied", "skipped_old", "already_watched", "unresolved", "added" }`
-- Shows already in history sync automatically; new shows and all movies land in `pending_review` and are NOT written. Ask the user before running `sync approve` for any title; never approve on their behalf
+- Confirmed episodes of shows already in history sync automatically; new shows, all movies, and implied episodes (e.g. skipped ones before an Up Next pointer) land in `pending_review` and are NOT written. Ask the user before running `sync approve` for any title; never approve on their behalf
 - Use `sync deny` for titles the user says belong to someone else
 
 ### Search
