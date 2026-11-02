@@ -1,8 +1,10 @@
 package sources
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -181,5 +183,58 @@ func TestHBOCompletion(t *testing.T) {
 	got := d.completedEpisodes()
 	if len(got) != 1 || got[0] != [2]int{1, 1} {
 		t.Errorf("completed = %v", got)
+	}
+}
+
+func TestUpNextOnlyConfirmsPreviousEpisode(t *testing.T) {
+	items := []upNextItem{
+		{Type: "Episode", ShowTitle: "Show A", SeasonNumber: 1, EpisodeNumber: 4, Context: "NextEpisode"},
+		{Type: "Episode", ShowTitle: "Show B", SeasonNumber: 1, EpisodeNumber: 3, Context: "Continue"},
+	}
+	var confirmed, review []string
+	for _, w := range InferUpNext(items) {
+		k := fmt.Sprintf("%s E%d", w.ShowTitle, w.Episode)
+		if w.NeedsReview {
+			review = append(review, k)
+		} else {
+			confirmed = append(confirmed, k)
+		}
+	}
+	// Only Show A E3 is proven finished; skipped/continued ranges need review.
+	if strings.Join(confirmed, ",") != "Show A E3" {
+		t.Errorf("confirmed = %v", confirmed)
+	}
+	if strings.Join(review, ",") != "Show A E1,Show A E2,Show B E1,Show B E2" {
+		t.Errorf("review = %v", review)
+	}
+}
+
+func TestNormalizeKeepsNonLatinDistinct(t *testing.T) {
+	a, b := Normalize("東京"), Normalize("京都")
+	if a == "" || b == "" || a == b {
+		t.Fatalf("non-Latin titles collapsed: %q %q", a, b)
+	}
+	c := &Config{Allow: []string{"東京"}, Deny: []string{"!!!"}}
+	if c.Allowed("京都") || !c.Allowed("東京") {
+		t.Error("allow matched the wrong non-Latin title")
+	}
+	if c.Denied("???") {
+		t.Error("empty normalized titles must never match")
+	}
+}
+
+func TestParamountRejectsBadNumbers(t *testing.T) {
+	body := []byte(`{"result":{"data":[
+	 {"showSeriesTitle":"NaN Show","seasonNumber":1,"episodeNumber":2,"progress":"NaN"},
+	 {"showSeriesTitle":"Inf Show","seasonNumber":1,"episodeNumber":2,"progress":"+Inf"},
+	 {"showSeriesTitle":"Frac Show","seasonNumber":1.5,"episodeNumber":2,"progress":95},
+	 {"showSeriesTitle":"Over Show","seasonNumber":1,"episodeNumber":2,"progress":150},
+	 {"showSeriesTitle":"Good Show","seasonNumber":1,"episodeNumber":2,"progress":95}]}}`)
+	w, err := ParseParamount(body, 80)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(w) != 1 || w[0].ShowTitle != "Good Show" {
+		t.Errorf("got %+v", w)
 	}
 }

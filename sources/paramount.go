@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strconv"
 )
 
@@ -54,14 +55,19 @@ func ParseParamount(body []byte, minProgress int) ([]Watch, error) {
 	}
 	var out []Watch
 	for _, it := range doc.Result.Data {
-		if float64(it.Progress) < float64(minProgress) {
+		prog := float64(it.Progress)
+		if math.IsNaN(prog) || prog < float64(minProgress) || prog > 100 {
 			continue
 		}
 		if it.IsMovie {
 			out = append(out, Watch{Kind: KindMovie, Source: "paramount", MovieTitle: it.Title})
 			continue
 		}
-		s, e := int(it.SeasonNumber), int(it.EpisodeNumber)
+		sf, ef := float64(it.SeasonNumber), float64(it.EpisodeNumber)
+		if sf != math.Trunc(sf) || ef != math.Trunc(ef) {
+			continue
+		}
+		s, e := int(sf), int(ef)
 		show := it.ShowSeriesTitle
 		if show == "" {
 			show = it.Title
@@ -87,7 +93,10 @@ func (n *looseNum) UnmarshalJSON(b []byte) error {
 	case float64:
 		*n = looseNum(t)
 	case string:
-		f, _ := strconv.ParseFloat(t, 64)
+		f, err := strconv.ParseFloat(t, 64)
+		if err != nil || math.IsNaN(f) || math.IsInf(f, 0) {
+			f = 0
+		}
 		*n = looseNum(f)
 	}
 	return nil

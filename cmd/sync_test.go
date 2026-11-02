@@ -82,3 +82,17 @@ func TestUpdateSyncListsKeepsComments(t *testing.T) {
 		t.Error("re-approving should be a no-op")
 	}
 }
+
+func TestUpdateSyncListsRefusesAliases(t *testing.T) {
+	in := []byte("household: &household\n  - Kids Show\ndeny: *household\n")
+	if _, _, err := updateSyncLists(in, []string{"New Drama"}, "allow", "deny"); err == nil {
+		t.Fatal("aliased deny list must be refused, not rewritten")
+	}
+	in = []byte("deny: Kids Show\n")
+	if _, _, err := updateSyncLists(in, []string{"X"}, "allow", "deny"); err == nil {
+		t.Fatal("scalar deny must be refused")
+	}
+	if _, _, err := updateSyncLists([]byte("enabled: true\nallow:\n"), []string{"X"}, "allow", "deny"); err != nil {
+		t.Fatalf("empty allow should be fine: %v", err)
+	}
+}

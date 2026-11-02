@@ -75,6 +75,29 @@ func updateSyncLists(data []byte, titles []string, add, remove string) ([]byte, 
 		return nil, false, fmt.Errorf("sync config is not a YAML mapping")
 	}
 	root := doc.Content[0]
+	// Refuse aliases, merge keys and non-list values for allow/deny rather
+	// than rewrite them: converting an alias in place would silently empty
+	// a shared deny list.
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		k, v := root.Content[i], root.Content[i+1]
+		if k.Value == "<<" {
+			return nil, false, fmt.Errorf("sync config uses a YAML merge key; edit allow/deny by hand")
+		}
+		if k.Value != add && k.Value != remove {
+			continue
+		}
+		if v.Kind == yaml.AliasNode || v.Anchor != "" {
+			return nil, false, fmt.Errorf("%s uses a YAML alias/anchor; edit it by hand", k.Value)
+		}
+		if v.Kind != yaml.SequenceNode && !(v.Kind == yaml.ScalarNode && v.Tag == "!!null") {
+			return nil, false, fmt.Errorf("%s must be a list", k.Value)
+		}
+		for _, item := range v.Content {
+			if item.Kind == yaml.AliasNode {
+				return nil, false, fmt.Errorf("%s contains a YAML alias; edit it by hand", k.Value)
+			}
+		}
+	}
 	list := func(key string, create bool) *yaml.Node {
 		for i := 0; i+1 < len(root.Content); i += 2 {
 			if root.Content[i].Value == key {
