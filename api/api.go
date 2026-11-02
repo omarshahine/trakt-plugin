@@ -711,6 +711,43 @@ type ShowSeason struct {
 	} `json:"episodes"`
 }
 
+// SeasonEpisodes is one season with episode titles, from the same
+// GET /shows/{id}/seasons?extended=full,episodes call as GetShowSeasons.
+// It is a separate type so existing ShowSeason literals stay unchanged.
+type SeasonEpisodes struct {
+	Number   int `json:"number"`
+	Episodes []struct {
+		Number int    `json:"number"`
+		Title  string `json:"title"`
+		Ids    struct {
+			Trakt int `json:"trakt"`
+		} `json:"ids"`
+	} `json:"episodes"`
+}
+
+// GetSeasonEpisodes returns every season of a show with episode numbers and
+// titles, used to resolve services that report episodes by title only.
+func (c *APIClient) GetSeasonEpisodes(showID int) ([]SeasonEpisodes, error) {
+	httpResp, err := c.doRequest(requestParams{
+		method: http.MethodGet,
+		path:   fmt.Sprintf("/shows/%d/seasons", showID),
+		auth:   true,
+		query:  map[string]string{"extended": "full,episodes"},
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer httpResp.Body.Close()
+	if httpResp.StatusCode != 200 {
+		return nil, fmt.Errorf("failed to get show seasons: %s", httpResp.Status)
+	}
+	var resp []SeasonEpisodes
+	if err := json.NewDecoder(httpResp.Body).Decode(&resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
 // GetShowSeasons returns all seasons of a show with their episodes.
 func (c *APIClient) GetShowSeasons(showID int) ([]ShowSeason, error) {
 	httpResp, err := c.doRequest(requestParams{
@@ -839,6 +876,9 @@ type SyncHistoryReq struct {
 // already in the history.
 type SyncEpisode struct {
 	Number int `json:"number"`
+	// WatchedAt optionally stamps this single episode's play (RFC3339).
+	// Empty means Trakt uses the parent item's watched_at, or now.
+	WatchedAt string `json:"watched_at,omitempty"`
 }
 
 type SyncSeason struct {
