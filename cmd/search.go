@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/omarshahine/trakt-plugin/api"
 	"github.com/briandowns/spinner"
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/muesli/termenv"
+	"github.com/omarshahine/trakt-plugin/api"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )

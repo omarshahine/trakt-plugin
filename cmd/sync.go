@@ -408,7 +408,10 @@ func watchedMovieIDs(c *api.APIClient) (map[int]bool, error) {
 		return nil, err
 	}
 	seen := map[int]bool{}
-	for page := 1; page < 200; page++ {
+	// Read to the last (short) page. A partial set would let a duplicate
+	// play through, so hitting the safety ceiling is an error, not success.
+	const maxPages = 5000
+	for page := 1; page <= maxPages; page++ {
 		h, _, err := c.GetUserHistory(slug, "movies", api.PaginationsParams{Page: page, Limit: 100})
 		if err != nil {
 			return nil, err
@@ -417,10 +420,10 @@ func watchedMovieIDs(c *api.APIClient) (map[int]bool, error) {
 			seen[it.Movie.Ids.Trakt] = true
 		}
 		if len(h) < 100 {
-			break
+			return seen, nil
 		}
 	}
-	return seen, nil
+	return nil, fmt.Errorf("movie history exceeds %d pages; refusing to dedupe against a partial set", maxPages)
 }
 
 func emitSync(rep *syncReport, message string) error {

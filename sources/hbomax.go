@@ -61,8 +61,11 @@ func (h *HBOMax) Fetch(ctx context.Context) ([]Watch, error) {
 	for k, v := range h.Candidates {
 		shows[k] = v
 	}
+	var errs []error
 	var mystuff hboDoc
-	if err := get("/cms/routes/my-stuff?include=default&decorators=viewingHistory", &mystuff); err == nil {
+	if err := get("/cms/routes/my-stuff?include=default&decorators=viewingHistory", &mystuff); err != nil {
+		errs = append(errs, err)
+	} else {
 		for _, name := range mystuff.continueWatchingShows() {
 			if _, ok := shows[name]; !ok {
 				shows[name] = time.Time{}
@@ -74,6 +77,7 @@ func (h *HBOMax) Fetch(ctx context.Context) ([]Watch, error) {
 	for name, seen := range shows {
 		var search hboDoc
 		if err := get("/cms/routes/search/result?include=default&contentFilter[query]="+url.QueryEscape(name), &search); err != nil {
+			errs = append(errs, err)
 			continue
 		}
 		show := search.findShow(name)
@@ -82,12 +86,17 @@ func (h *HBOMax) Fetch(ctx context.Context) ([]Watch, error) {
 		}
 		eps, err := h.completed(get, show)
 		if err != nil {
-			continue
+			errs = append(errs, err)
 		}
 		for _, e := range eps {
 			out = append(out, Watch{Kind: KindEpisode, Source: "hbomax", ShowTitle: show.Attributes.Name,
 				Season: e[0], Episode: e[1], WatchedAt: seen})
 		}
+	}
+	if len(errs) > 0 {
+		// Keep what was collected, but surface the failure so the run
+		// exits non-zero instead of looking complete.
+		return out, fmt.Errorf("hbomax: %d of %d lookups failed (first: %v)", len(errs), len(shows)+1, errs[0])
 	}
 	return out, nil
 }
@@ -162,9 +171,10 @@ func (h *HBOMax) completed(get func(string, interface{}) error, show *hboEntity)
 				var season hboDoc
 				q := fmt.Sprintf("/cms/collections/%s?include=default&decorators=viewingHistory&pf[show.id]=%s&pf[seasonNumber]=%s",
 					url.PathEscape(c.ID), url.QueryEscape(show.ID), url.QueryEscape(fmt.Sprint(opt.Value)))
-				if err := get(q, &season); err == nil {
-					add(season)
+				if err := get(q, &season); err != nil {
+					return out, err
 				}
+				add(season)
 			}
 		}
 	}

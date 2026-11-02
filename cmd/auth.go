@@ -6,8 +6,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/omarshahine/trakt-plugin/api"
 	"github.com/briandowns/spinner"
+	"github.com/omarshahine/trakt-plugin/api"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 
