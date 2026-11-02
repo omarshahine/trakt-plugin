@@ -14,10 +14,13 @@ import (
 // as Paramount+, Hulu, HBO Max, Peacock, Prime Video) on all of the user's
 // Apple devices.
 //
-// Each entry is a pointer: "NextEpisode" at SxEy means SxE(y-1) finished;
-// "Continue" at SxEy means SxEy is in progress. Either way SxE1..SxE(y-1)
-// are reported as inferred watches. Movies in Up Next are in progress or
-// unstarted, so they are never reported.
+// Each entry is a pointer. Only "NextEpisode" at SxEy proves something: the
+// viewer finished SxE(y-1), which is reported as a confirmed watch. Earlier
+// episodes, and everything before a "Continue" pointer, are only implied (the
+// viewer may have skipped ahead, or someone else may share the Apple ID), so
+// they are reported with NeedsReview set and are never written without the
+// user's approval. Movies in Up Next are in progress or unstarted, so they
+// are never reported.
 type UpNext struct {
 	Cookies CookieLoader
 	// Unlabeled collects show titles whose app is not named in the
@@ -187,8 +190,9 @@ func ParseUpNext(body []byte) ([]upNextItem, map[string]string, string, error) {
 	return items, ch, page.Data.Shelf.NextToken, nil
 }
 
-// InferUpNext turns Up Next pointers into watched episodes: every episode
-// before the pointer in the same season.
+// InferUpNext turns Up Next pointers into watches. "NextEpisode" at SxEy
+// confirms SxE(y-1); every other earlier episode in the season is implied
+// only and marked NeedsReview.
 func InferUpNext(items []upNextItem) []Watch {
 	var out []Watch
 	for _, it := range items {
@@ -199,14 +203,16 @@ func InferUpNext(items []upNextItem) []Watch {
 			continue
 		}
 		for e := 1; e < it.EpisodeNumber; e++ {
+			confirmed := it.Context == "NextEpisode" && e == it.EpisodeNumber-1
 			out = append(out, Watch{
-				Kind:      KindEpisode,
-				Source:    "upnext",
-				ShowTitle: it.ShowTitle,
-				Season:    it.SeasonNumber,
-				Episode:   e,
-				WatchedAt: it.When(),
-				Inferred:  true,
+				Kind:        KindEpisode,
+				Source:      "upnext",
+				ShowTitle:   it.ShowTitle,
+				Season:      it.SeasonNumber,
+				Episode:     e,
+				WatchedAt:   it.When(),
+				Inferred:    !confirmed,
+				NeedsReview: !confirmed,
 			})
 		}
 	}

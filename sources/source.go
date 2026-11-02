@@ -44,6 +44,10 @@ type Watch struct {
 	// Inferred marks episodes implied by a "next episode" pointer rather
 	// than reported directly.
 	Inferred bool `json:"inferred,omitempty"`
+	// NeedsReview means the evidence is too weak to write automatically,
+	// even for a show already in history; it goes to pending_review unless
+	// the title is approved.
+	NeedsReview bool `json:"needs_review,omitempty"`
 }
 
 // Title is the show title for episodes and the movie title for movies.
