@@ -7,9 +7,11 @@ package sources
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -86,41 +88,77 @@ type response struct {
 // fetch performs a GET (following up to 5 redirects manually) and returns
 // the final response. Truncated bodies are returned as-is: some services
 // close chunked HTML early and the data we need is near the top.
-func fetch(ctx context.Context, url string, headers map[string]string) (*response, error) {
+//
+// Credentials only travel within the starting site: a redirect that leaves
+// HTTPS is refused, and one to a different site drops every caller header
+// (cookies, bearer tokens, Apple's media-user-token). Errors never carry
+// query strings, which can hold tokens.
+func fetch(ctx context.Context, rawURL string, headers map[string]string) (*response, error) {
+	start, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, fmt.Errorf("bad url %s", redactURL(rawURL))
+	}
+	site := siteOf(start.Hostname())
+	send := headers
 	for hop := 0; hop < 6; hop++ {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 		if err != nil {
-			return nil, err
+			return nil, redactErr(err)
 		}
 		req.Header.Set("User-Agent", UserAgent)
 		req.Header.Set("Accept-Language", "en-US,en;q=0.9")
-		for k, v := range headers {
+		for k, v := range send {
 			req.Header.Set(k, v)
 		}
 		resp, err := httpClient.Do(req)
 		if err != nil {
-			return nil, err
+			return nil, redactErr(err)
 		}
 		body, readErr := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if readErr != nil && len(body) == 0 {
-			return nil, readErr
+			return nil, redactErr(readErr)
 		}
 		if resp.StatusCode >= 300 && resp.StatusCode < 400 && resp.Header.Get("Location") != "" {
 			next, err := resp.Request.URL.Parse(resp.Header.Get("Location"))
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("bad redirect from %s", redactURL(rawURL))
 			}
-			url = next.String()
+			if next.Scheme != "https" {
+				return nil, fmt.Errorf("refusing non-https redirect from %s", redactURL(rawURL))
+			}
+			if siteOf(next.Hostname()) != site {
+				send = nil
+			}
+			rawURL = next.String()
 			continue
 		}
 		return &response{Status: resp.StatusCode, Body: body, Header: resp.Header, Request: resp.Request}, nil
 	}
-	return nil, fmt.Errorf("too many redirects fetching %s", redactURL(url))
+	return nil, fmt.Errorf("too many redirects fetching %s", redactURL(rawURL))
+}
+
+// siteOf approximates the registrable domain (last two labels), enough to
+// tell netflix.com from a third-party host.
+func siteOf(host string) string {
+	parts := strings.Split(strings.ToLower(host), ".")
+	if len(parts) <= 2 {
+		return strings.Join(parts, ".")
+	}
+	return strings.Join(parts[len(parts)-2:], ".")
+}
+
+// redactErr strips query strings and fragments from URLs inside errors.
+func redactErr(err error) error {
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		return fmt.Errorf("%s %s: %v", ue.Op, redactURL(ue.URL), ue.Err)
+	}
+	return err
 }
 
 func redactURL(u string) string {
-	if i := strings.IndexByte(u, '?'); i >= 0 {
+	if i := strings.IndexAny(u, "?#"); i >= 0 {
 		return u[:i]
 	}
 	return u
