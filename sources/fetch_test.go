@@ -48,8 +48,7 @@ func TestFetchDropsCredentialsOnCrossSiteRedirect(t *testing.T) {
 func TestFetchKeepsCredentialsSameSite(t *testing.T) {
 	withInsecureClient(t)
 	var gotCookie string
-	var srv *httptest.Server
-	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/start" {
 			http.Redirect(w, r, "/next", http.StatusFound)
 			return
