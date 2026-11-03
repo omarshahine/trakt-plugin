@@ -97,7 +97,15 @@ Regression tests cover acceptance and refusal without the marker.
   populated write/read fidelity for all such categories was not established on
   this account. No public comments or social actions were seeded.
 - Collaborated-list metadata does not imply coverage of other owners' contents.
-- Official VIP archive retrieval and a product restore executor are not implemented.
+- Official VIP archive retrieval and a general multi-category restore executor
+  are not implemented. A ratings-only executor is now implemented locally; see
+  [ratings-restore.md](ratings-restore.md). Live tests used actual native
+  source/current/restored backups: a missing movie and episode rating were
+  restored with their original dates, a conflict introduced after preview refused the entire
+  reviewed batch, and an explicit repeat apply was a verified no-op. All four
+  rating categories matched the source archive after restoration. Dedicated
+  test ratings were removed afterward; the original six ratings and 11 history
+  records were unchanged. Original ZIP bytes and credentials were unchanged.
 - Granular history-event removal is implemented locally in the CLI and plugin.
   Live tests removed dedicated movie/episode events, refused a wrong account and
   wrong date, and refused a later apply of the already removed episode. Final

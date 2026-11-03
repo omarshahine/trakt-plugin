@@ -35,10 +35,18 @@ Or set `TRAKT_CLI_PATH` environment variable, or configure `cliPath` in plugin s
 | `trakt_history` | View watch history |
 | `trakt_history_add` | Mark movies/shows as watched |
 | `trakt_history_remove_event` | Preview or explicitly remove one dated watch by string history-event ID, with account/type/media/date guards and scoped readback |
+| `trakt_backup_restore_ratings` | Offline archive-bound review or explicit restoration of missing dated ratings, with live UUID/conflict checks and value/date readback |
 | `trakt_watchlist` | View watchlist |
 | `trakt_progress` | Show watch progress for TV shows |
 | `trakt_auth` | Set up Trakt.tv authentication |
 | `trakt_sync` | Opt-in: import from streaming services (only when `syncEnabled`) |
+
+### Reviewed ratings restoration
+
+For ratings restoration, `trakt_backup_restore_ratings` defaults to an offline
+preview. Apply requires the exact returned `review_id`, matching `expect_user`
+and explicit authorization. Partial/uncertain operations preserve row states;
+never retry them blindly. See [ratings restore limits and race semantics](../docs/ratings-restore.md).
 
 ### Precise history-event removal
 

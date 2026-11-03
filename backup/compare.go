@@ -459,6 +459,10 @@ func readComparisonArchive(filename string) (*comparisonArchive, error) {
 		return nil, fmt.Errorf("cannot open ZIP")
 	}
 	defer z.Close()
+	return readComparisonZIP(&z.Reader)
+}
+
+func readComparisonZIP(z *zip.Reader) (*comparisonArchive, error) {
 	if len(z.File) > 10000 {
 		return nil, fmt.Errorf("too many ZIP members")
 	}

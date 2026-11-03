@@ -36,6 +36,29 @@ test('custom list tools are registered and declared in the manifest', () => {
 	assert.ok(!tools.some((tool) => tool.name === 'trakt_sync'));
 });
 
+test('ratings restore preview is offline, bounded and forwards reviewed apply parameters literally', async () => {
+	const tool=tools.find(t=>t.name==='trakt_backup_restore_ratings');
+	const manifest=JSON.parse(readFileSync(new URL('../openclaw.plugin.json',import.meta.url)));
+	assert.ok(tool && manifest.contracts.tools.includes(tool.name));
+	assert.deepEqual(tool.parameters.required,['source','current']);
+	assert.equal(tool.parameters.properties.limit.maximum,100);
+	const params={source:'/synthetic/desired archive.zip',current:'/synthetic/current;literal.zip',limit:2};
+	authConfigured=false;
+	try{
+		await tool.execute('test',params);
+		assert.deepEqual(calls.at(-1).args,['backup','restore-ratings','--source',params.source,'--current',params.current,'--limit','2','--json']);
+		const count=calls.length;const denied=await tool.execute('test',{...params,apply:true});assert.equal(calls.length,count);assert.equal(JSON.parse(denied.content[0].text).success,false);
+	}finally{authConfigured=true;}
+	await tool.execute('test',{...params,review_id:'a'.repeat(64),expect_user:'synthetic',apply:true});
+	assert.deepEqual(calls.at(-1).args,['backup','restore-ratings','--source',params.source,'--current',params.current,'--limit','2','--review-id','a'.repeat(64),'--expect-user','synthetic','--apply','--json']);
+});
+
+test('partial rating restores retain reviewed row outcomes without replay',async()=>{
+	const tool=tools.find(t=>t.name==='trakt_backup_restore_ratings');const review='a'.repeat(64);const count=calls.length;
+	mutationFailure=Object.assign(new Error('synthetic partial rating restore'),{stdout:JSON.stringify({review_id:review,outcome:'partial',attempted:true,verified:false,rows:[{type:'movie',trakt_id:'55',state:'present_verified'},{type:'episode',trakt_id:'56',state:'missing'}]}),stderr:'partial result; inspect ratings before retrying'});
+	try{const result=await tool.execute('test',{source:'/synthetic/source.zip',current:'/synthetic/current.zip',review_id:review,expect_user:'synthetic',apply:true});const parsed=JSON.parse(result.content[0].text);assert.equal(calls.length,count+1);assert.equal(parsed.operation.outcome,'partial');assert.equal(parsed.operation.rows[1].state,'missing');}finally{mutationFailure=undefined;}
+});
+
 test('single history-event removal previews offline and keeps precise IDs as literal arguments', async () => {
 	const tool = tools.find(t => t.name === 'trakt_history_remove_event');
 	const manifest = JSON.parse(readFileSync(new URL('../openclaw.plugin.json', import.meta.url)));

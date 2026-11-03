@@ -507,6 +507,11 @@ For precisely undoing a single dated watch, see
 [history-event removal](docs/history-event-removal.md). This is separate from
 backup restoration: it does not import archives or remove every play of a title.
 
+For explicit execution of a reviewed missing-ratings batch, see the
+[ratings-only restore executor](docs/ratings-restore.md). It has an offline
+archive-bound review, fresh UUID/conflict checks, and value/date readback; it
+does not execute the history/watchlist candidates described below.
+
 ```bash
 # Offline: supply a freshly created current-account backup.
 trakt-cli backup plan-restore --source ./desired.zip --current ./current.zip --json

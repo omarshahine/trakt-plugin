@@ -49,20 +49,24 @@ type RestorePlan struct {
 // snapshot, not a live lock: candidates must be reviewed and rechecked before use.
 // No credentials, network, account writes or deletion operations are involved.
 func PlanRestore(source, current string) (RestorePlan, error) {
+	a, err := readComparisonArchive(source)
+	if err != nil {
+		return RestorePlan{}, fmt.Errorf("source archive: %w", err)
+	}
+	b, err := readComparisonArchive(current)
+	if err != nil {
+		return RestorePlan{}, fmt.Errorf("current archive: %w", err)
+	}
+	return planRestoreArchives(a, b)
+}
+
+func planRestoreArchives(a, b *comparisonArchive) (RestorePlan, error) {
 	p := RestorePlan{Version: 1, ReadOnly: true, Candidates: []PlanCandidate{}, Conflicts: []PlanIssue{}, Unsupported: []PlanIssue{}, Warnings: []string{
 		"Preview only; current means the supplied snapshot. Refresh it immediately before any manual import. No account changes were made.",
 		"Import JSON covers missing movie/episode watches, watchlist entries and ratings only. It cannot restore all backup categories, notes/ranks, or history event IDs. Missing rating timestamps are omitted, not reconstructed.",
 		"Website-layout archive completeness is unknown. Historical supplemental account fields are not restore candidates.",
 		"Trakt website import acceptance and duplicate-watch handling have not been live-tested. Review conflicts separately; no conflict is included in import JSON.",
 	}}
-	a, err := readComparisonArchive(source)
-	if err != nil {
-		return p, fmt.Errorf("source archive: %w", err)
-	}
-	b, err := readComparisonArchive(current)
-	if err != nil {
-		return p, fmt.Errorf("current archive: %w", err)
-	}
 	aID, err := comparisonAccount(a)
 	if err != nil {
 		return p, err

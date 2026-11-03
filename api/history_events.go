@@ -176,7 +176,7 @@ func (c *APIClient) historyEvents(owner string, target HistoryEventRef) (map[str
 	result := map[string]HistoryEventRef{}
 	pages, limit, total := 0, 0, 0
 	for page := 1; page <= 100; page++ {
-		rows, p, err := c.historyEventPage(path, page)
+		rows, p, err := c.strictRecordPage(path, page, 100)
 		if err != nil {
 			return nil, err
 		}
@@ -232,22 +232,22 @@ func (c *APIClient) historyEvents(owner string, target HistoryEventRef) (map[str
 	return nil, fmt.Errorf("history page limit exceeded")
 }
 
-func (c *APIClient) historyEventPage(path string, page int) ([]json.RawMessage, Pagination, error) {
-	r, err := c.doRequest(requestParams{method: http.MethodGet, path: path, auth: true, noCache: true, pagination: PaginationsParams{Page: page, Limit: 100}})
+func (c *APIClient) strictRecordPage(path string, page, limit int) ([]json.RawMessage, Pagination, error) {
+	r, err := c.doRequest(requestParams{method: http.MethodGet, path: path, auth: true, noCache: true, pagination: PaginationsParams{Page: page, Limit: limit}})
 	if err != nil {
 		return nil, Pagination{}, err
 	}
 	defer r.Body.Close()
 	if r.StatusCode != http.StatusOK {
-		return nil, Pagination{}, fmt.Errorf("history read returned HTTP %d", r.StatusCode)
+		return nil, Pagination{}, fmt.Errorf("record read returned HTTP %d", r.StatusCode)
 	}
 	data, err := io.ReadAll(io.LimitReader(r.Body, (4<<20)+1))
 	if err != nil || len(data) > 4<<20 {
-		return nil, Pagination{}, fmt.Errorf("history page unreadable or too large")
+		return nil, Pagination{}, fmt.Errorf("record page unreadable or too large")
 	}
 	var rows []json.RawMessage
 	if json.Unmarshal(data, &rows) != nil || rows == nil {
-		return nil, Pagination{}, fmt.Errorf("history page must be a JSON array, not null")
+		return nil, Pagination{}, fmt.Errorf("record page must be a JSON array, not null")
 	}
 	return rows, Pagination{Page: r.Header.Get("X-Pagination-Page"), Limit: r.Header.Get("X-Pagination-Limit"), PageCount: r.Header.Get("X-Pagination-Page-Count"), ItemCount: r.Header.Get("X-Pagination-Item-Count")}, nil
 }

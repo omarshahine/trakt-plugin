@@ -79,6 +79,17 @@ function preferenceTools(): ToolDef[] {
 // Tool metadata — each maps to a CLI subcommand
 const TOOLS: ToolDef[] = [
 	{
+		name: 'trakt_backup_restore_ratings', command: 'backup', subcommand: 'restore-ratings',
+		description: 'Review or explicitly restore only missing dated ratings from validated local source/current ZIPs. Default offline preview binds a review_id to exact archive bytes, account UUID and batch. Apply requires explicit authorization, matching review_id and expect_user; live existing ratings are never intentionally overwritten. Values/dates and other ratings in affected scopes are read back. No atomic server insert-if-absent exists: races/updated counts are reported as partial or uncertain, never silently retried or rolled back. Does not restore history, watchlists or other categories.',
+		parameters: Type.Object({
+			source: Type.String({ minLength: 1 }), current: Type.String({ minLength: 1 }),
+			limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100, default: 100 })),
+			apply: Type.Optional(Type.Boolean({ default: false })),
+			review_id: Type.Optional(Type.String({ pattern: '^[a-f0-9]{64}$', description: 'Exact digest from the reviewed offline batch; required with apply=true' })),
+			expect_user: Type.Optional(Type.String({ minLength: 1, description: 'Reviewed current account slug; required with apply=true' })),
+		}),
+	},
+	{
 		name: 'trakt_history_remove_event', command: 'history', subcommand: 'remove-event',
 		description: 'Remove exactly one dated movie/episode watch by HISTORY EVENT ID, never all watches of a title. Default is an offline unverified preview. Require explicit user authorization, apply=true and expect_user to execute. Fresh preflight must match event ID, media type/ID and exact watched_at; success requires scoped readback showing other plays unchanged. Never automatically retry partial/uncertain results. Get string event/media IDs and full timestamp from trakt_history. Unknown-date events are unsupported.',
 		parameters: Type.Object({
@@ -502,7 +513,8 @@ export default definePluginEntry({
 					const listPreview = tool.command === 'lists' && ['create', 'add', 'remove', 'notes', 'reorder'].includes(tool.subcommand ?? '') && params.apply !== true;
 					const preferencePreview = ['ratings', 'favorites'].includes(tool.command) && ['set', 'add', 'remove'].includes(tool.subcommand ?? '') && params.apply !== true;
 					const historyEventPreview = tool.command === 'history' && tool.subcommand === 'remove-event' && params.apply !== true;
-					if (tool.command !== 'auth' && !localComparison && !listPreview && !preferencePreview && !historyEventPreview && !isAuthConfigured()) {
+					const ratingRestorePreview = tool.command === 'backup' && tool.subcommand === 'restore-ratings' && params.apply !== true;
+					if (tool.command !== 'auth' && !localComparison && !listPreview && !preferencePreview && !historyEventPreview && !ratingRestorePreview && !isAuthConfigured()) {
 						return toolResult(
 							JSON.stringify(
 								{
@@ -556,6 +568,13 @@ export default definePluginEntry({
 								: '';
 						const errorOutput = stderr ? `${message}\n\nstderr: ${stderr}` : message;
 						let historyOperation: Record<string, unknown> | undefined;
+						let ratingRestoreOperation: Record<string, unknown> | undefined;
+						if (tool.command === 'backup' && tool.subcommand === 'restore-ratings' && params.apply === true && error && typeof error === 'object' && 'stdout' in error) {
+							try {
+								const operation = JSON.parse(String((error as { stdout: unknown }).stdout));
+								if (typeof params.review_id === 'string' && operation?.review_id === params.review_id && typeof operation.attempted === 'boolean' && operation.verified === false && ['not_attempted', 'unknown', 'partial'].includes(operation.outcome)) ratingRestoreOperation = operation;
+							} catch { /* Never replay an uncertain restore. */ }
+						}
 						if (tool.command === 'history' && tool.subcommand === 'remove-event' && params.apply === true && error && typeof error === 'object' && 'stdout' in error) {
 							try {
 								const operation = JSON.parse(String((error as { stdout: unknown }).stdout));
@@ -581,7 +600,7 @@ export default definePluginEntry({
 									{
 										success: false,
 										rate_limited: true,
-										...(historyOperation ? { operation: historyOperation } : {}),
+										...(historyOperation || ratingRestoreOperation ? { operation: historyOperation ?? ratingRestoreOperation } : {}),
 										retry_after_seconds: retryAfter,
 										error:
 											'Trakt API rate-limited this request' +
@@ -596,6 +615,7 @@ export default definePluginEntry({
 						}
 
 						if (historyOperation) return toolResult(JSON.stringify({ success: false, error: errorOutput, operation: historyOperation }, null, 2));
+						if (ratingRestoreOperation) return toolResult(JSON.stringify({ success: false, error: errorOutput, operation: ratingRestoreOperation }, null, 2));
 						// The CLI exits nonzero for partial writes, but stdout retains
 						// structured outcome/counts so callers can inspect before retrying.
 						const listWrite = tool.command === 'lists' && ['create', 'add', 'remove', 'notes', 'reorder'].includes(tool.subcommand ?? '');
