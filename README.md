@@ -345,6 +345,14 @@ stops the export. No automatic retry is made after a rate limit. Failed exports
 exit nonzero and retain available pages with `complete: false` and errors in the
 manifest when storage permits. Do not treat a partial ZIP as a complete backup.
 
+For a brand-new account, Trakt can return HTTP 204 for the statistics snapshot.
+This is recorded as `user/stats.json: null` with `http_status: 204` in that file's
+manifest entry, not fabricated zero totals or an unmarked empty object. One
+snapshot observation is counted. Other missing/empty account documents still
+fail, and native comparison requires the explicit no-content marker for null
+statistics. Historical watchlist dates and repeated watches are not guaranteed
+by merely accepting a sync/import request; verify the read-back records.
+
 Ratings and collections are identified by the corresponding media's Trakt ID,
 not its parent show's ID. Their pagination totals remain strict; history's
 terminal-count reconciliation does not silently relax other categories.

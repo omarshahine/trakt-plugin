@@ -68,6 +68,8 @@ func (c *APIClient) GetBackupPage(user, resource, listID string, p PaginationsPa
 }
 
 // GetBackupDocument reads allowlisted account snapshots as raw JSON objects.
+// Only an HTTP 204 statistics response becomes a null sentinel, explicitly
+// marked as HTTP 204 in the export manifest rather than invented zero totals.
 func (c *APIClient) GetBackupDocument(user, resource string) (json.RawMessage, error) {
 	if strings.TrimSpace(user) == "" {
 		return nil, fmt.Errorf("user must not be empty")
@@ -91,6 +93,11 @@ func (c *APIClient) GetBackupDocument(user, resource string) (json.RawMessage, e
 		return nil, err
 	}
 	defer r.Body.Close()
+	// Brand-new accounts can have no generated statistics yet. Preserve absence,
+	// not fabricated zero totals; exporter metadata records the HTTP 204.
+	if resource == "user/stats" && r.StatusCode == http.StatusNoContent {
+		return json.RawMessage("null"), nil
+	}
 	if r.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("failed to read backup document: %s", r.Status)
 	}

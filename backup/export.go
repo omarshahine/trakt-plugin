@@ -34,9 +34,11 @@ type Options struct {
 }
 
 type File struct {
-	Path    string `json:"path"`
-	Records int    `json:"records"`
-	SHA256  string `json:"sha256"`
+	// HTTPStatus is set only for the explicit no-content statistics sentinel.
+	HTTPStatus int    `json:"http_status,omitempty"`
+	Path       string `json:"path"`
+	Records    int    `json:"records"`
+	SHA256     string `json:"sha256"`
 }
 type Resource struct {
 	Name     string `json:"name"`
@@ -211,8 +213,9 @@ var pageResources = []string{
 }
 
 func (x *exporter) document(name string, raw json.RawMessage) error {
+	noContent := name == "user/stats" && bytes.Equal(bytes.TrimSpace(raw), []byte("null"))
 	var object map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &object); err != nil || len(object) == 0 {
+	if err := json.Unmarshal(raw, &object); !noContent && (err != nil || len(object) == 0) {
 		return fmt.Errorf("%s: snapshot must be a nonempty object", name)
 	}
 	data, err := json.MarshalIndent(object, "", "  ")
@@ -230,6 +233,9 @@ func (x *exporter) document(name string, raw json.RawMessage) error {
 	}
 	digest := sha256.Sum256(data)
 	x.manifest.Files = append(x.manifest.Files, File{Path: path, Records: 1, SHA256: hex.EncodeToString(digest[:])})
+	if noContent {
+		x.manifest.Files[len(x.manifest.Files)-1].HTTPStatus = 204
+	}
 	x.manifest.Resources = append(x.manifest.Resources, Resource{Name: name, Expected: 1, Records: 1, Pages: 1, Complete: true})
 	return nil
 }
