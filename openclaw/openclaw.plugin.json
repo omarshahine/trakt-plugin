@@ -57,6 +57,7 @@
 	  "trakt_history_remove_event",
 	  "trakt_backup_restore_ratings",
 	  "trakt_backup_restore_favorites",
+      "trakt_backup_restore_collections",
       "trakt_backup_plan_collection",
       "trakt_backup",
         "trakt_backup_compare",

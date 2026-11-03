@@ -82,6 +82,16 @@ const TOOLS: ToolDef[] = [
  description:'Offline collection observations from validated local source/current ZIPs: missing movie/episode memberships, collected_at and technical metadata conflicts. No login, network, apply mode or writes. Binds archive bytes/account UUID; does not expand nested show summaries. Observed metadata is not a guarantee of writable fields or date fidelity.',
  parameters:Type.Object({source:Type.String({minLength:1}),current:Type.String({minLength:1})})},
 	{
+		name: 'trakt_backup_restore_collections', command: 'backup', subcommand: 'restore-collections',
+		description: 'Review/restore missing flat movie/episode collection entries with original collected_at and narrowly tested technical values. Default offline preview binds exact ZIP bytes, UUID and batch. Explicit apply, review_id and expect_user required. Fresh existing conflicts refuse the whole batch; no overwrites, removals, automatic mutation replay or rollback. Non-null 3d/HDR and untested fields/values withheld. Readback verifies dates/technical values and pre-existing scope; concurrent writes are not atomically preventable.',
+		parameters: Type.Object({
+			source: Type.String({ minLength: 1 }), current: Type.String({ minLength: 1 }),
+			limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100, default: 100 })),
+			apply: Type.Optional(Type.Boolean({ default: false })),
+			review_id: Type.Optional(Type.String({ pattern: '^[a-f0-9]{64}$' })),
+			expect_user: Type.Optional(Type.String({ minLength: 1 })),
+		}),
+	},	{
 		name: 'trakt_backup_restore_favorites', command: 'backup', subcommand: 'restore-favorites',
 		description: 'Review or explicitly restore missing movie/show FAVORITES MEMBERSHIP only from validated source/current ZIPs. Default offline preview binds archive bytes, account UUID and batch to review_id. Apply requires explicit authorization, matching review_id and expect_user; adds missing membership and verifies existing favorites remain. Ranks, notes and timestamps are NOT restored and server-assigned order may change. Account capacity is checked when known. No removals, automatic mutation retries or rollback; inspect partial/uncertain row states.',
 		parameters: Type.Object({
@@ -527,7 +537,7 @@ export default definePluginEntry({
 					const listPreview = tool.command === 'lists' && ['create', 'add', 'remove', 'notes', 'reorder'].includes(tool.subcommand ?? '') && params.apply !== true;
 					const preferencePreview = ['ratings', 'favorites'].includes(tool.command) && ['set', 'add', 'remove'].includes(tool.subcommand ?? '') && params.apply !== true;
 					const historyEventPreview = tool.command === 'history' && tool.subcommand === 'remove-event' && params.apply !== true;
-					const restorePreview = tool.command === 'backup' && ['restore-ratings', 'restore-favorites'].includes(tool.subcommand ?? '') && params.apply !== true;
+					const restorePreview = tool.command === 'backup' && ['restore-ratings', 'restore-favorites', 'restore-collections'].includes(tool.subcommand ?? '') && params.apply !== true;
 					if (tool.command !== 'auth' && !localComparison && !listPreview && !preferencePreview && !historyEventPreview && !restorePreview && !isAuthConfigured()) {
 						return toolResult(
 							JSON.stringify(
@@ -583,7 +593,7 @@ export default definePluginEntry({
 						const errorOutput = stderr ? `${message}\n\nstderr: ${stderr}` : message;
 						let historyOperation: Record<string, unknown> | undefined;
 						let ratingRestoreOperation: Record<string, unknown> | undefined;
-						if (tool.command === 'backup' && ['restore-ratings', 'restore-favorites'].includes(tool.subcommand ?? '') && params.apply === true && error && typeof error === 'object' && 'stdout' in error) {
+						if (tool.command === 'backup' && ['restore-ratings', 'restore-favorites', 'restore-collections'].includes(tool.subcommand ?? '') && params.apply === true && error && typeof error === 'object' && 'stdout' in error) {
 							try {
 								const operation = JSON.parse(String((error as { stdout: unknown }).stdout));
 								if (typeof params.review_id === 'string' && operation?.review_id === params.review_id && typeof operation.attempted === 'boolean' && operation.verified === false && ['not_attempted', 'unknown', 'partial'].includes(operation.outcome)) ratingRestoreOperation = operation;

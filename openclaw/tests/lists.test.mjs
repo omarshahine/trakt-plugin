@@ -276,3 +276,17 @@ test('preference partial results stay visible and are not replayed', async () =>
  const tool=tools.find(t=>t.name==='trakt_backup_plan_collection');const manifest=JSON.parse(readFileSync(new URL('../openclaw.plugin.json',import.meta.url)));assert.ok(tool && manifest.contracts.tools.includes(tool.name));assert.deepEqual(tool.parameters.required,['source','current']);assert.ok(!('apply' in tool.parameters.properties));authConfigured=false;
  try{await tool.execute('collection-test',{source:'/synthetic/source.zip',current:'/synthetic/current.zip'});assert.deepEqual(calls.at(-1).args,['backup','plan-collection','--source','/synthetic/source.zip','--current','/synthetic/current.zip','--json']);}finally{authConfigured=true;}
  });
+test('collections restore exposes dated-collection offline review and explicit apply parameters',async()=>{
+	const tool=tools.find(t=>t.name==='trakt_backup_restore_collections');const manifest=JSON.parse(readFileSync(new URL('../openclaw.plugin.json',import.meta.url)));assert.ok(tool && manifest.contracts.tools.includes(tool.name));assert.deepEqual(tool.parameters.required,['source','current']);
+	const params={source:'/synthetic/collections source.zip',current:'/synthetic/collections;current.zip',limit:2};authConfigured=false;
+	try{await tool.execute('test',params);assert.deepEqual(calls.at(-1).args,['backup','restore-collections','--source',params.source,'--current',params.current,'--limit','2','--json']);const count=calls.length;const denied=await tool.execute('test',{...params,apply:true});assert.equal(calls.length,count);assert.equal(JSON.parse(denied.content[0].text).success,false);}finally{authConfigured=true;}
+	await tool.execute('test',{...params,review_id:'b'.repeat(64),expect_user:'synthetic',apply:true});assert.ok(calls.at(-1).args.includes('--apply'));assert.ok(!calls.at(-1).args.includes('--rank'));assert.ok(!calls.at(-1).args.includes('--notes'));
+});
+
+test('collections restore partial and rate-limit states stay visible without mutation replay',async()=>{
+	const tool=tools.find(t=>t.name==='trakt_backup_restore_collections');const review='b'.repeat(64);
+	for(const throttled of [false,true]){
+		const count=calls.length;mutationFailure=Object.assign(new Error('synthetic collections failure'),{stdout:JSON.stringify({review_id:review,outcome:throttled?'unknown':'partial',attempted:true,verified:false,rows:[{type:'movie',trakt_id:'55',state:'present_verified'},{type:'show',trakt_id:'56',state:'missing'}]}),stderr:throttled?'rate limited by trakt api: 429 (path=/sync/collections retry_after=60)':'partial membership; inspect before retry'});
+		try{const result=await tool.execute('test',{source:'/synthetic/source.zip',current:'/synthetic/current.zip',review_id:review,expect_user:'synthetic',apply:true});const parsed=JSON.parse(result.content[0].text);assert.equal(calls.length,count+1);assert.equal(parsed.operation.attempted,true);assert.equal(parsed.operation.rows[1].state,'missing');if(throttled){assert.equal(parsed.retry_after_seconds,60);assert.equal(parsed.rate_limited,true);}}finally{mutationFailure=undefined;}
+	}
+});

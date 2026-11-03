@@ -604,3 +604,5 @@ The development CLI and plugin must both include this feature. Large histories c
 take several minutes; use the CLI directly if the plugin timeout is insufficient.
 
 Collection restore planning (offline only): [contract and live evidence](docs/collection-restore-planner.md).
+
+Missing-only collection restore executor: [contract and live acceptance](docs/collection-restore.md).

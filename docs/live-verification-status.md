@@ -134,14 +134,18 @@ Regression tests cover acceptance and refusal without the marker.
   writes/native exports verified missing-movie and changed-date/resolution
   classification through the actual plugin, plus missing-episode detection from
   earlier real archives. Original collection/rating/history/favorite objects were
-  unchanged after cleanup. No collection apply mode exists. Movie date and four
+  unchanged after cleanup. A separate narrow collection apply mode is now implemented. Movie date and four
   technical fields survived; submitted 3d=false returned null. A subsequent actual flat-episode test also preserved its historical date and
   the four technical fields. For both movie/episode, 3d:true read as numeric 1;
   explicit 3d:false read as null. Both test additions were removed and original
   movie/episode/nested-show collections plus ratings/history/favorites were
   exactly unchanged. Other technical enums, hdr and whole-show restoration
-  remain unverified. The proposed narrow executor contract is documented but
-  not implemented.
+  remain unverified. The narrow executor is now implemented locally; see
+  [collection-restore.md](collection-restore.md). Actual plugin restoration from
+  native source/current ZIPs restored movie/episode dates and four technical
+  values; a post-preview conflict refused the entire batch, explicit repeat was
+  a verified no-op, restored native observations matched source, and original
+  collections/ratings/watches/favorites remained unchanged after test cleanup.
 
 ## Next steps
 

@@ -56,7 +56,7 @@ Both temporary entries were deleted. Exact original movie/episode collection
 objects and nested-show collection summaries remained; original ratings,
 favorites, history and credential bytes were independently unchanged.
 
-## Proposed first executor contract (not implemented)
+## First executor contract (implemented locally)
 
 - Missing flat movie/episode entries only, exact positive Trakt media IDs and
   known historical collected_at. No whole-show/season expansion or overwrites.
@@ -80,6 +80,8 @@ favorites, history and credential bytes were independently unchanged.
   uncertain acknowledgments, unexpected updates, partial results and failed
   readbacks must be surfaced. Never automatically replay writes or roll back
   another actor's changes. Current-only entries are never deletion candidates.
-- Acceptance: real test-account movie and episode backup/loss/restore, conflict
+- Acceptance (passed): real test-account movie and episode backup/loss/restore, conflict
   after preview, repeat/no-op, unchanged originals, credential/archive hashes and
   independent cleanup. No production-account fallback.
+
+Implementation and live acceptance: [collection-restore.md](collection-restore.md).

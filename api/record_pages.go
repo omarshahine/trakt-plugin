@@ -10,13 +10,13 @@ import (
 
 // Restore preflight/readback must not interpret null, missing headers or partial
 // pages as complete absence. Walk pages without retaining all raw responses.
-func (c *APIClient) walkStrictRecords(path string, requestedLimit, maxRecords int, visit func(json.RawMessage) error) error {
+func (c *APIClient) walkStrictRecords(path string, requestedLimit, maxRecords int, visit func(json.RawMessage) error, query ...map[string]string) error {
 	if requestedLimit < 1 || requestedLimit > 1000 || maxRecords < 1 || visit == nil {
 		return fmt.Errorf("invalid bounded record walk")
 	}
 	pages, limit, total, count := 0, 0, 0, 0
 	for page := 1; page <= 100; page++ {
-		rows, p, err := c.strictRecordPage(path, page, requestedLimit)
+		rows, p, err := c.strictRecordPage(path, page, requestedLimit, query...)
 		if err != nil {
 			return err
 		}
@@ -66,8 +66,12 @@ func (c *APIClient) walkStrictRecords(path string, requestedLimit, maxRecords in
 	return fmt.Errorf("record page limit exceeded")
 }
 
-func (c *APIClient) strictRecordPage(path string, page, limit int) ([]json.RawMessage, Pagination, error) {
-	r, err := c.doRequest(requestParams{method: http.MethodGet, path: path, auth: true, noCache: true, pagination: PaginationsParams{Page: page, Limit: limit}})
+func (c *APIClient) strictRecordPage(path string, page, limit int, query ...map[string]string) ([]json.RawMessage, Pagination, error) {
+	var fields map[string]string
+	if len(query) > 0 {
+		fields = query[0]
+	}
+	r, err := c.doRequest(requestParams{method: http.MethodGet, path: path, auth: true, noCache: true, query: fields, pagination: PaginationsParams{Page: page, Limit: limit}})
 	if err != nil {
 		return nil, Pagination{}, err
 	}

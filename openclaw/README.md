@@ -281,3 +281,5 @@ take several minutes; use the CLI directly if the plugin timeout is insufficient
 network. It distinguishes missing movies/episodes from collected-date/technical
 metadata conflicts. No apply mode exists; current-only entries are not deletions.
 See [scope and observed fidelity](../docs/collection-restore-planner.md).
+
+Missing-only collection restore executor: `trakt_backup_restore_collections` — [contract and live acceptance](../docs/collection-restore.md).
