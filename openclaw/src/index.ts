@@ -113,6 +113,28 @@ const TOOLS: ToolDef[] = [
 		}),
 	},
 	{
+		name: 'trakt_lists',
+		command: 'lists',
+		description:
+			'Read your custom lists, including private lists accessible to your authenticated account. Returns original API metadata and pagination. Read-only; not a full account backup.',
+		parameters: Type.Object({
+			page: Type.Optional(Type.Integer({ minimum: 1, description: 'Page number (default 1)' })),
+			limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000, description: 'Items per page (default 10)' })),
+		}),
+	},
+	{
+		name: 'trakt_list_items',
+		command: 'lists',
+		subcommand: 'items',
+		description:
+			'Read one custom list by Trakt ID or slug from trakt_lists. Preserves returned rank, IDs, listed_at, notes and mixed item types. Follow pagination for complete contents. Read-only; only fields returned by the API are available.',
+		parameters: Type.Object({
+			list: Type.String({ minLength: 1, description: 'Custom list Trakt ID or slug (not its display name)' }),
+			page: Type.Optional(Type.Integer({ minimum: 1, description: 'Page number (default 1)' })),
+			limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000, description: 'Items per page (default 10)' })),
+		}),
+	},
+	{
 		name: 'trakt_watchlist',
 		command: 'watchlist',
 		description:

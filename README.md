@@ -123,6 +123,32 @@ trakt-cli history remove --type movie "The Godfather" --json
 |------|-------------|---------|
 | `--type` | `show` or `movie` | `show` |
 
+### Custom lists (read-only)
+
+```bash
+trakt-cli lists --limit 100 --page 1 --json
+trakt-cli lists items --list 12345 --limit 100 --page 1 --json
+trakt-cli lists items --list weekend-films --json
+```
+
+Uses your existing login and reads your own lists, including private lists your
+account can access. Use a Trakt ID or slug from `lists`, not a display name.
+`--page` must be positive; `--limit` is 1-1000 (default 10).
+
+JSON output is `{ "items": [...], "page", "limit", "page_count", "item_count" }`.
+Records preserve **all fields returned by the API**, including list metadata,
+item IDs, ranks, timestamps, notes and mixed movie/show/season/episode/person
+records. Fields present in the website export but omitted by the API cannot be
+reconstructed by these commands. Pagination values come from response headers;
+missing headers are empty strings, not an assertion that the data is complete.
+Follow `page_count` where provided. No automatic all-pages export is performed.
+These commands never create, edit, reorder or delete lists and are not a full
+account backup or restore feature. API failures exit nonzero.
+
+OpenClaw exposes `trakt_lists` and `trakt_list_items` with the same pagination
+parameters (`trakt_list_items` also requires `list`). Both the plugin and the
+companion CLI must include this feature; an older CLI will reject `lists`.
+
 ### watchlist
 
 View your watchlist.
