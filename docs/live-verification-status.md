@@ -129,6 +129,15 @@ Regression tests cover acceptance and refusal without the marker.
   records remained. Original archives/credentials were unchanged. Rank, note
   and timestamp fidelity is explicitly outside this executor's scope.
 
+- Collection restoration now has a read-only dedicated planner; see
+  [collection-restore-planner.md](collection-restore-planner.md). Real test-account
+  writes/native exports verified missing-movie and changed-date/resolution
+  classification through the actual plugin, plus missing-episode detection from
+  earlier real archives. Original collection/rating/history/favorite objects were
+  unchanged after cleanup. No collection apply mode exists. Movie date and four
+  technical fields survived; submitted 3d=false returned null. Episode technical
+  writes and nested-show restoration remain unverified.
+
 ## Next steps
 
 1. Submit/review the empty-statistics fix and the pending restore-planner,

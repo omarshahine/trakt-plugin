@@ -78,6 +78,9 @@ function preferenceTools(): ToolDef[] {
 
 // Tool metadata — each maps to a CLI subcommand
 const TOOLS: ToolDef[] = [
+ {name:'trakt_backup_plan_collection', command:'backup', subcommand:'plan-collection',
+ description:'Offline collection observations from validated local source/current ZIPs: missing movie/episode memberships, collected_at and technical metadata conflicts. No login, network, apply mode or writes. Binds archive bytes/account UUID; does not expand nested show summaries. Observed metadata is not a guarantee of writable fields or date fidelity.',
+ parameters:Type.Object({source:Type.String({minLength:1}),current:Type.String({minLength:1})})},
 	{
 		name: 'trakt_backup_restore_favorites', command: 'backup', subcommand: 'restore-favorites',
 		description: 'Review or explicitly restore missing movie/show FAVORITES MEMBERSHIP only from validated source/current ZIPs. Default offline preview binds archive bytes, account UUID and batch to review_id. Apply requires explicit authorization, matching review_id and expect_user; adds missing membership and verifies existing favorites remain. Ranks, notes and timestamps are NOT restored and server-assigned order may change. Account capacity is checked when known. No removals, automatic mutation retries or rollback; inspect partial/uncertain row states.',
@@ -520,7 +523,7 @@ export default definePluginEntry({
 				parameters: tool.parameters,
 
 				async execute(_id: string, params: Record<string, unknown>) {
-					const localComparison = tool.command === 'backup' && (tool.subcommand === 'compare' || tool.subcommand === 'plan-restore');
+					const localComparison = tool.command === 'backup' && (tool.subcommand === 'compare' || tool.subcommand === 'plan-restore' || tool.subcommand === 'plan-collection');
 					const listPreview = tool.command === 'lists' && ['create', 'add', 'remove', 'notes', 'reorder'].includes(tool.subcommand ?? '') && params.apply !== true;
 					const preferencePreview = ['ratings', 'favorites'].includes(tool.command) && ['set', 'add', 'remove'].includes(tool.subcommand ?? '') && params.apply !== true;
 					const historyEventPreview = tool.command === 'history' && tool.subcommand === 'remove-event' && params.apply !== true;

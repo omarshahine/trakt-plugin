@@ -602,3 +602,5 @@ over 16 MiB or a total expanded size over 512 MiB.
 OpenClaw exposes `trakt_backup` with `output`, `limit`, `delay_ms` and `max_pages`.
 The development CLI and plugin must both include this feature. Large histories can
 take several minutes; use the CLI directly if the plugin timeout is insufficient.
+
+Collection restore planning (offline only): [contract and live evidence](docs/collection-restore-planner.md).

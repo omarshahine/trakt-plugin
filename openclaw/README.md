@@ -274,3 +274,10 @@ tool; actual website import acceptance remains untested. Reports/files contain
 private IDs, dates and ratings. No account write or delete functionality is added.
 The development CLI and plugin must both include this feature. Large histories can
 take several minutes; use the CLI directly if the plugin timeout is insufficient.
+
+### Collection restore planning
+
+`trakt_backup_plan_collection` reads local source/current ZIPs without login or
+network. It distinguishes missing movies/episodes from collected-date/technical
+metadata conflicts. No apply mode exists; current-only entries are not deletions.
+See [scope and observed fidelity](../docs/collection-restore-planner.md).

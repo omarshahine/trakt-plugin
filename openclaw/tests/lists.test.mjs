@@ -271,3 +271,8 @@ test('preference partial results stay visible and are not replayed', async () =>
 		assert.equal(calls.length, count + 1);
 	} finally { mutationFailure = undefined; }
 });
+
+ test('collection planner is offline, registered and has no apply schema',async()=>{
+ const tool=tools.find(t=>t.name==='trakt_backup_plan_collection');const manifest=JSON.parse(readFileSync(new URL('../openclaw.plugin.json',import.meta.url)));assert.ok(tool && manifest.contracts.tools.includes(tool.name));assert.deepEqual(tool.parameters.required,['source','current']);assert.ok(!('apply' in tool.parameters.properties));authConfigured=false;
+ try{await tool.execute('collection-test',{source:'/synthetic/source.zip',current:'/synthetic/current.zip'});assert.deepEqual(calls.at(-1).args,['backup','plan-collection','--source','/synthetic/source.zip','--current','/synthetic/current.zip','--json']);}finally{authConfigured=true;}
+ });
