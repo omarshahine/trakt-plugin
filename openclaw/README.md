@@ -43,6 +43,28 @@ Or set `TRAKT_CLI_PATH` environment variable, or configure `cliPath` in plugin s
 
 MIT
 
+### Ratings and favorites
+
+`trakt_ratings` and `trakt_favorites` read raw paginated records with optional
+`type`, `page` and `limit`. Ratings support movie/show/season/episode; favorites
+support movie/show; read type defaults `all`. `trakt_rating_set` and
+`trakt_rating_remove` set/change/remove ratings; `trakt_favorite_add` and
+`trakt_favorite_remove` manage favorites. Mutation `type` and exact Trakt media
+`ids` (strings) are required. Ratings set also requires integer `rating` 1-10;
+optional `rated_at` is an ISO8601 timestamp, normalized to UTC, omitted uses now.
+
+All write tools default to offline preview without authentication/network.
+`apply: true` requires `expect_user` to match the token's freshly resolved account
+before any write. This guard does not select credentials: only the existing
+single `~/.trakt.yaml` login is supported. Named profiles/two simultaneous logins
+are not implemented. Isolate test credentials before live test-account use.
+
+Obtain user authorization before applying. Mutations disable automatic replay;
+inspect partial/not_found, limit and uncertain results before a manual retry.
+Structured partial outcomes are retained by the plugin. No history/list changes,
+favorite notes or favorite reordering are added. Tests use synthetic accounts;
+live service acceptance is not yet verified.
+
 ### Custom-list management
 
 The tools `trakt_list_create`, `trakt_list_add`, `trakt_list_remove`,

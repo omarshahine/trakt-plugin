@@ -355,6 +355,54 @@ Tests use synthetic local HTTP servers, not real Trakt writes. End-to-end server
 acceptance and free-account limits need a separate test account; VIP-only notes
 cannot be fully live-verified with a non-VIP account.
 
+### Ratings and favorites (preview-first management)
+
+```bash
+# Read one page; follow page_count for full coverage.
+trakt-cli ratings --type movie --page 1 --limit 100 --json
+trakt-cli ratings --type season --json
+trakt-cli favorites --type all --json
+
+# Offline previews: no credential loading or Trakt requests.
+trakt-cli ratings set --type movie --ids 55 --rating 8 --rated-at 2026-01-01T00:00:00Z --json
+trakt-cli ratings remove --type episode --ids 123 --json
+trakt-cli favorites add --type show --ids 55,56 --json
+trakt-cli favorites remove --type movie --ids 55 --json
+```
+
+Ratings support movies, shows, seasons and episodes, using their own Trakt media
+IDs rather than parent-show IDs. `set` adds or changes a rating, restricted to
+integers 1-10. Optional `--rated-at` must be ISO8601 and is normalized to UTC;
+omitting it uses server time. Favorites support movies/shows only. Input IDs are
+canonical positive integer strings, preserve precision above 2^53 and must be
+unique. Reads retain raw returned fields and pagination; missing pagination does
+not assert completeness. Unknown media types and invalid arguments fail before
+requests. No title-search guessing or nested show-to-episode expansion is done.
+
+Writes require **both `--apply` and `--expect-user <account-slug>`**. The account is
+resolved freshly from `/users/settings`; a mismatch aborts before the sync write.
+`--expect-user` is a safety check, **not an account selector**. The CLI/plugin still
+use the single `~/.trakt.yaml` login; separate named credential profiles are not
+implemented. Do not replace a production login to run test-account experiments.
+No token refresh/replay is attempted for the mutation itself. After 401, 420,
+rate limits or uncertain network results, inspect account state before retrying.
+HTTP 420 can indicate an account limit. Partial/unconfirmed counts, `not_found`
+items and malformed responses exit nonzero, preserving available structured
+outcomes/counts instead of reporting every requested change as successful.
+
+OpenClaw tools: `trakt_ratings`, `trakt_rating_set`, `trakt_rating_remove`,
+`trakt_favorites`, `trakt_favorite_add`, `trakt_favorite_remove`. Write tools
+default to offline preview; explicit `apply: true` and matching `expect_user`
+are required. Preview and obtain user authorization before applying. These tools
+do not change watch history or custom lists. Favorite notes/reordering are not
+included in this contribution.
+
+Contracts: [Trakt sync routes](https://github.com/trakt/trakt-api/blob/master/projects/api/src/contracts/sync/index.ts),
+[rating reads](https://github.com/trakt/trakt-api/blob/master/projects/api/src/contracts/users/subroutes/ratings.ts),
+[favorite reads](https://github.com/trakt/trakt-api/blob/master/projects/api/src/contracts/users/subroutes/favorites.ts).
+Tests use synthetic local HTTP servers; real service acceptance remains untested.
+Live write verification requires an isolated test-account credential setup first.
+
 ## License
 
 MIT

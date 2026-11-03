@@ -6,7 +6,7 @@
  */
 
 import { definePluginEntry } from 'openclaw/plugin-sdk/plugin-entry';
-import { Type } from '@sinclair/typebox';
+import { Type, type TSchema } from '@sinclair/typebox';
 import { existsSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
@@ -42,8 +42,43 @@ const SYNC_TOOL: ToolDef = {
 	}),
 };
 
+function preferenceTools(): ToolDef[] {
+	const result: ToolDef[] = [];
+	for (const resource of ['ratings', 'favorites']) {
+		const kinds = resource === 'ratings' ? ['movie', 'show', 'season', 'episode'] : ['movie', 'show'];
+		result.push({
+			name: `trakt_${resource}`, command: resource,
+			description: `Read one page of your ${resource}, preserving returned timestamps, IDs and metadata. Read-only; follow pagination for complete coverage. Uses the currently configured single Trakt login; named accounts are not yet supported.`,
+			parameters: Type.Object({
+				type: Type.Optional(Type.Union([...kinds, 'all'].map(value => Type.Literal(value)), { description: 'Media type; default all' })),
+				page: Type.Optional(Type.Integer({ minimum: 1 })),
+				limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000 })),
+			}),
+		});
+		for (const action of [resource === 'ratings' ? 'set' : 'add', 'remove']) {
+			const properties: Record<string, TSchema> = {
+				type: Type.Union(kinds.map(value => Type.Literal(value))),
+				ids: Type.Array(Type.String({ pattern: '^[1-9][0-9]*$' }), { minItems: 1, maxItems: 10000, uniqueItems: true, description: 'Exact Trakt MEDIA IDs as strings' }),
+				apply: Type.Optional(Type.Boolean({ default: false, description: 'Explicitly execute the authorized write; default offline preview' })),
+				expect_user: Type.Optional(Type.String({ minLength: 1, description: 'Required with apply=true: account slug must match fresh token identity before any write' })),
+			};
+			if (resource === 'ratings' && action === 'set') {
+				properties.rating = Type.Integer({ minimum: 1, maximum: 10, description: 'New rating; may replace the existing rating' });
+				properties.rated_at = Type.Optional(Type.String({ description: 'Optional ISO8601 timestamp; omitted uses server time' }));
+			}
+			result.push({
+				name: `trakt_${resource === 'ratings' ? 'rating' : 'favorite'}_${action}`, command: resource, subcommand: action,
+				description: `${action} ${resource} using exact Trakt media IDs. Defaults to offline preview with no login/network. Explicit apply=true plus matching expect_user is required to write. Preview and obtain user authorization before applying. No automatic retries; inspect partial/uncertain outcomes. Favorites support movies/shows only. Does not change history or lists.`,
+				parameters: Type.Object(properties),
+			});
+		}
+	}
+	return result;
+}
+
 // Tool metadata — each maps to a CLI subcommand
 const TOOLS: ToolDef[] = [
+	...preferenceTools(),
 	{
 		name: 'trakt_list_create', command: 'lists', subcommand: 'create',
 		description: 'Create an owned custom list. Defaults to offline preview; apply=true explicitly writes to the authenticated account. Privacy defaults private. Preview first and obtain user authorization for the write. Do not blindly retry after an uncertain outcome.',
@@ -442,7 +477,8 @@ export default definePluginEntry({
 				async execute(_id: string, params: Record<string, unknown>) {
 					const localComparison = tool.command === 'backup' && tool.subcommand === 'compare';
 					const listPreview = tool.command === 'lists' && ['create', 'add', 'remove', 'notes', 'reorder'].includes(tool.subcommand ?? '') && params.apply !== true;
-					if (tool.command !== 'auth' && !localComparison && !listPreview && !isAuthConfigured()) {
+					const preferencePreview = ['ratings', 'favorites'].includes(tool.command) && ['set', 'add', 'remove'].includes(tool.subcommand ?? '') && params.apply !== true;
+					if (tool.command !== 'auth' && !localComparison && !listPreview && !preferencePreview && !isAuthConfigured()) {
 						return toolResult(
 							JSON.stringify(
 								{
@@ -520,10 +556,12 @@ export default definePluginEntry({
 
 						// The CLI exits nonzero for partial writes, but stdout retains
 						// structured outcome/counts so callers can inspect before retrying.
-						if (tool.command === 'lists' && ['create', 'add', 'remove', 'notes', 'reorder'].includes(tool.subcommand ?? '') && params.apply === true && error && typeof error === 'object' && 'stdout' in error) {
+						const listWrite = tool.command === 'lists' && ['create', 'add', 'remove', 'notes', 'reorder'].includes(tool.subcommand ?? '');
+						const preferenceWrite = ['ratings', 'favorites'].includes(tool.command) && ['set', 'add', 'remove'].includes(tool.subcommand ?? '');
+						if ((listWrite || preferenceWrite) && params.apply === true && error && typeof error === 'object' && 'stdout' in error) {
 							try {
 								const operation = JSON.parse(String((error as { stdout: unknown }).stdout));
-								if (operation?.action === tool.subcommand && ['not_attempted', 'unknown', 'partial'].includes(operation.outcome)) {
+								if (operation?.action === tool.subcommand && (!preferenceWrite || operation.resource === tool.command) && ['not_attempted', 'unknown', 'partial'].includes(operation.outcome)) {
 									return toolResult(JSON.stringify({ success: false, error: errorOutput, operation }, null, 2));
 								}
 							} catch { /* Fall through to the ordinary error without replay. */ }

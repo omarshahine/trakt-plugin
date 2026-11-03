@@ -125,3 +125,55 @@ test('partial list writes preserve structured results and are not retried', asyn
 		assert.equal(calls.length, count + 1);
 	} finally { mutationFailure = undefined; }
 });
+
+test('ratings/favorites register typed reads and offline preview-first writes', async () => {
+	const manifest = JSON.parse(readFileSync(new URL('../openclaw.plugin.json', import.meta.url)));
+	for (const resource of ['ratings', 'favorites']) {
+		const tool = tools.find(t => t.name === `trakt_${resource}`);
+		assert.ok(tool && manifest.contracts.tools.includes(tool.name));
+		await tool.execute('test', { type: 'movie', page: 2, limit: 50 });
+		assert.deepEqual(calls.at(-1).args, [resource, '--type', 'movie', '--page', '2', '--limit', '50', '--json']);
+	}
+	const cases = [
+		['trakt_rating_set', 'ratings', 'set', { type: 'episode', ids: ['9007199254740993'], rating: 9, rated_at: '2026-01-01T00:00:00Z' }, ['--type', 'episode', '--ids', '9007199254740993', '--rating', '9', '--rated-at', '2026-01-01T00:00:00Z']],
+		['trakt_rating_remove', 'ratings', 'remove', { type: 'season', ids: ['55'] }, ['--type', 'season', '--ids', '55']],
+		['trakt_favorite_add', 'favorites', 'add', { type: 'movie', ids: ['55', '56'] }, ['--type', 'movie', '--ids', '55,56']],
+		['trakt_favorite_remove', 'favorites', 'remove', { type: 'show', ids: ['55'] }, ['--type', 'show', '--ids', '55']],
+	];
+	authConfigured = false;
+	try {
+		for (const [name, resource, action, params, expected] of cases) {
+			const tool = tools.find(t => t.name === name);
+			assert.ok(tool && manifest.contracts.tools.includes(name));
+			await tool.execute('test', params);
+			assert.deepEqual(calls.at(-1).args, [resource, action, ...expected, '--json']);
+			const count = calls.length;
+			const denied = await tool.execute('test', { ...params, apply: true, expect_user: 'test-account' });
+			assert.equal(calls.length, count);
+			assert.equal(JSON.parse(denied.content[0].text).success, false);
+		}
+	} finally { authConfigured = true; }
+	const tool = tools.find(t => t.name === 'trakt_rating_set');
+	assert.ok(tool.parameters.required.includes('rating'));
+	assert.equal(tool.parameters.properties.rating.minimum, 1);
+	assert.equal(tool.parameters.properties.rating.maximum, 10);
+	await tool.execute('test', { type: 'movie', ids: ['55'], rating: 8, apply: true, expect_user: 'test-account' });
+	assert.deepEqual(calls.at(-1).args, ['ratings', 'set', '--type', 'movie', '--ids', '55', '--rating', '8', '--apply', '--expect-user', 'test-account', '--json']);
+});
+
+test('preference partial results stay visible and are not replayed', async () => {
+	const tool = tools.find(t => t.name === 'trakt_favorite_add');
+	mutationFailure = Object.assign(new Error('synthetic partial result'), {
+		stdout: JSON.stringify({ resource: 'favorites', action: 'add', outcome: 'partial', http_status: 201, response: { added: { movies: 1 }, not_found: { movies: [{ ids: { trakt: 56 } }] } } }),
+		stderr: 'some preference items were not found; inspect result before retrying',
+	});
+	const count = calls.length;
+	try {
+		const result = await tool.execute('test', { type: 'movie', ids: ['55', '56'], apply: true, expect_user: 'test-account' });
+		const parsed = JSON.parse(result.content[0].text);
+		assert.equal(parsed.success, false);
+		assert.equal(parsed.operation.resource, 'favorites');
+		assert.equal(parsed.operation.outcome, 'partial');
+		assert.equal(calls.length, count + 1);
+	} finally { mutationFailure = undefined; }
+});
