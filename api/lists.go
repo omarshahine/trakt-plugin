@@ -29,10 +29,14 @@ func (c *APIClient) GetUserListItems(user, list string, params PaginationsParams
 }
 
 func (c *APIClient) getListRecords(path string, params PaginationsParams) ([]json.RawMessage, Pagination, error) {
+	return c.getRecordPage(path, params, false)
+}
+
+func (c *APIClient) getRecordPage(path string, params PaginationsParams, fresh bool) ([]json.RawMessage, Pagination, error) {
 	if params.Page < 1 || params.Limit < 1 || params.Limit > 1000 {
 		return nil, Pagination{}, fmt.Errorf("page must be positive and limit must be between 1 and 1000")
 	}
-	resp, err := c.doRequest(requestParams{method: http.MethodGet, path: path, auth: true, pagination: params})
+	resp, err := c.doRequest(requestParams{method: http.MethodGet, path: path, auth: true, pagination: params, noCache: fresh})
 	if err != nil {
 		return nil, Pagination{}, err
 	}
@@ -40,11 +44,11 @@ func (c *APIClient) getListRecords(path string, params PaginationsParams) ([]jso
 	if resp.StatusCode != http.StatusOK {
 		// Do not echo response bodies: authentication failures can contain
 		// sensitive data. Preserve status without hiding permission errors.
-		return nil, Pagination{}, fmt.Errorf("failed to read custom list: %s", resp.Status)
+		return nil, Pagination{}, fmt.Errorf("failed to read Trakt records: %s", resp.Status)
 	}
 	var records []json.RawMessage
 	if err := json.NewDecoder(resp.Body).Decode(&records); err != nil {
-		return nil, Pagination{}, fmt.Errorf("decode custom list: %w", err)
+		return nil, Pagination{}, fmt.Errorf("decode Trakt records: %w", err)
 	}
 	if records == nil {
 		records = []json.RawMessage{}

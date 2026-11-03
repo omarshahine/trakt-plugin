@@ -72,7 +72,7 @@ func TestCustomListErrorsAndEmpty(t *testing.T) {
 		body   string
 		want   string
 	}{
-		{"empty", 200, `[]`, ""}, {"malformed", 200, `{`, "decode custom list"},
+		{"empty", 200, `[]`, ""}, {"malformed", 200, `{`, "decode Trakt records"},
 		{"unauthorized", 401, `sensitive-body`, "401"}, {"private", 403, `sensitive-body`, "403"},
 		{"missing", 404, `sensitive-body`, "404"}, {"server", 500, `sensitive-body`, "500"},
 		{"rate-limit", 429, `sensitive-body`, "rate limited"},

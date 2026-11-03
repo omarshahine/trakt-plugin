@@ -113,6 +113,18 @@ const TOOLS: ToolDef[] = [
 		}),
 	},
 	{
+		name: 'trakt_backup',
+		command: 'backup',
+		description:
+			'Create a new local ZIP containing all pages of raw history, watchlist and owned custom lists. Includes checksums, counts and an explicit scoped completeness manifest. Never overwrites a file or changes Trakt. Contains private data; use on user request. Not the full website export. Failures retain a partial ZIP marked incomplete; do not retry after rate limiting until the stated interval has passed.',
+		parameters: Type.Object({
+			output: Type.String({ minLength: 1, description: 'New local ZIP path; must not already exist' }),
+			limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000, description: 'Records per API page (default 1000)' })),
+			delay_ms: Type.Optional(Type.Integer({ minimum: 0, description: 'Minimum milliseconds between requests (default 1000)' })),
+			max_pages: Type.Optional(Type.Integer({ minimum: 1, description: 'Maximum pages per resource (default 10000); hitting it makes export incomplete' })),
+		}),
+	},
+	{
 		name: 'trakt_lists',
 		command: 'lists',
 		description:
@@ -402,7 +414,7 @@ export default definePluginEntry({
 						// flag so per-show progress checks don't hammer 50 API calls.
 						const { stdout } = await runCli(cliPath, args, {
 							// sync walks several services plus per-show history lookups.
-							timeout: tool.command === 'sync' ? 600_000 : 120_000,
+							timeout: ['sync', 'backup'].includes(tool.command) ? 600_000 : 120_000,
 							maxBuffer: 4 * 1024 * 1024,
 						});
 

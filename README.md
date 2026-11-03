@@ -306,3 +306,40 @@ Originally forked from [angristan/trakt-cli](https://github.com/angristan/trakt-
 ## License
 
 MIT
+
+### Scoped raw backup (read-only Trakt access)
+
+```bash
+trakt-cli backup --output ./trakt-backup.zip --json
+```
+
+Creates a **new** ZIP with every page of history, watchlist, custom-list metadata
+and each owned custom list's contents. Reuses the current login; does not change
+Trakt or include OAuth credentials. Existing output files are never overwritten.
+Keep the ZIP private. It contains your account data.
+
+`manifest.json` records the explicit scope/exclusions, start/end times, per-resource
+expected/actual counts, page counts, per-file SHA-256 checksums and `complete`.
+Records retain API fields, item ordering and individual history event IDs (including
+rewatches). Only list inventory and seen IDs, not all history pages, are held in memory.
+
+Completeness requires valid stable pagination, exact page/item counts, unique record
+IDs, matching list metadata counts, and an unchanged `/sync/last_activities` marker.
+Trakt does not provide a transactional snapshot: an unchanged activity marker is a
+consistency check, not an absolute snapshot guarantee. A changed marker fails the export.
+
+Defaults: `--limit 1000`, `--delay-ms 1000`, `--max-pages 10000` per resource.
+The first and terminal pages are probed before walking a multi-page resource, so
+inconsistent counters fail early. Backup reads request HTTP cache revalidation;
+this does not guarantee the service honors it. Missing pagination, an API error,
+changed counts, duplicate IDs, or the page cap
+stops the export. No automatic retry is made after a rate limit. Failed exports
+exit nonzero and retain available pages with `complete: false` and errors in the
+manifest when storage permits. Do not treat a partial ZIP as a complete backup.
+
+This is **not** the website's full export or a restore feature. Ratings, collections,
+favorites, comments, notes outside lists, hidden items, settings, social data and
+collaborated lists owned by others are explicitly excluded for this first version.
+OpenClaw exposes `trakt_backup` with `output`, `limit`, `delay_ms` and `max_pages`.
+The development CLI and plugin must both include this feature. Large histories can
+take several minutes; use the CLI directly if the plugin timeout is insufficient.
