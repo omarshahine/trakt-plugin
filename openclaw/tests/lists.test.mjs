@@ -13,7 +13,8 @@ execFile[promisify.custom] = async (file, args) => {
 mock.module('child_process', {
 	namedExports: { execFile, execFileSync: () => '/synthetic/trakt-cli' },
 });
-mock.module('fs', { namedExports: { existsSync: () => true } });
+let authConfigured = true;
+mock.module('fs', { namedExports: { existsSync: () => authConfigured } });
 mock.module('openclaw/plugin-sdk/plugin-entry', {
 	namedExports: { definePluginEntry: (entry) => entry },
 });
@@ -60,4 +61,21 @@ test('backup forwards a local path as one argument without invoking a shell', as
 	assert.deepEqual(tool.parameters.required, ['output']);
 	const manifest = JSON.parse(readFileSync(new URL('../openclaw.plugin.json', import.meta.url)));
 	assert.ok(manifest.contracts.tools.includes('trakt_backup'));
+});
+
+test('local backup comparison works without auth and passes paths as literal arguments', async () => {
+	const tool = tools.find((tool) => tool.name === 'trakt_backup_compare');
+	const manifest = JSON.parse(readFileSync(new URL('../openclaw.plugin.json', import.meta.url)));
+	assert.ok(manifest.contracts.tools.includes('trakt_backup_compare'));
+	const before = '/synthetic/private backups/before.zip';
+	const after = '/synthetic/after; not-a-command.zip';
+	const previousCalls = calls.length;
+	authConfigured = false;
+	try {
+		await tool.execute('test', { before, after, sample_limit: 0 });
+		assert.equal(calls.length, previousCalls + 1);
+		assert.deepEqual(calls.at(-1).args, ['backup', 'compare', '--before', before, '--after', after, '--sample-limit', '0', '--json']);
+	} finally {
+		authConfigured = true;
+	}
 });

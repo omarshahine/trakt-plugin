@@ -126,6 +126,17 @@ const TOOLS: ToolDef[] = [
 		}),
 	},
 	{
+		name: 'trakt_backup_compare',
+		command: 'backup',
+		subcommand: 'compare',
+		description: 'Read-only local comparison of two backup ZIPs. Validates native manifest checksums/counts/IDs and refuses partial backups; website-layout ZIPs get CRC/JSON/ID checks but unknown completeness. Reports coverage-aware additions, removals and changed field paths, never before/after values. Historical supplements require freshness review. No Trakt login, network calls, restore or file modifications.',
+		parameters: Type.Object({
+			before: Type.String({ minLength: 1, description: 'Earlier local ZIP path' }),
+			after: Type.String({ minLength: 1, description: 'Later local ZIP path' }),
+			sample_limit: Type.Optional(Type.Integer({ minimum: 0, maximum: 100, description: 'Maximum ID/field-path samples per change type and resource (default 10)' })),
+		}),
+	},
+	{
 		name: 'trakt_lists',
 		command: 'lists',
 		description:
@@ -390,7 +401,8 @@ export default definePluginEntry({
 				parameters: tool.parameters,
 
 				async execute(_id: string, params: Record<string, unknown>) {
-					if (tool.command !== 'auth' && !isAuthConfigured()) {
+					const localComparison = tool.command === 'backup' && tool.subcommand === 'compare';
+					if (tool.command !== 'auth' && !localComparison && !isAuthConfigured()) {
 						return toolResult(
 							JSON.stringify(
 								{

@@ -55,6 +55,7 @@
       "trakt_history_add",
       "trakt_history_remove",
       "trakt_backup",
+      "trakt_backup_compare",
       "trakt_lists",
       "trakt_list_items",
       "trakt_watchlist",

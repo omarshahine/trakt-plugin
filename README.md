@@ -392,6 +392,42 @@ exporter does not fetch or refresh these saved values automatically.
 
 This closes known missing account-field paths, not a promise that a newer backup
 equals an older website snapshot or that future website fields are covered.
+
+#### Read-only archive comparison
+
+```bash
+trakt-cli backup compare --before ./earlier.zip --after ./later.zip --json
+```
+
+This command only reads the two local ZIPs. It does not load Trakt credentials,
+contact the API, modify archives, or restore anything. OpenClaw exposes
+`trakt_backup_compare` with `before`, `after` and optional `sample_limit`.
+
+Native backups must have a supported, complete manifest. Comparison verifies
+ZIP reads/CRC, each listed SHA-256 and count, resource totals, contiguous page
+names, unique record identities, and absence of unlisted files. Partial or
+corrupt native backups are refused. The flat filename layout of official
+website ZIPs is also recognized; CRC/JSON/identity checks cannot establish their
+account-wide completeness or authenticity, so completeness is reported unknown.
+Unrecognized files and detectable intermediate page gaps fail explicitly.
+
+Known account identities must not conflict. When the two archives lack enough
+identity information to match accounts, the report says `unverified`.
+Resources covered on only one side are coverage differences, not inferred
+additions or deletions. Shared resources report added/removed IDs and changed
+records, separating media-metadata-only changes, record-data changes and account
+snapshots. These are archive differences, not proof of account actions.
+
+JSON object-key order and whitespace do not cause changes; array order remains
+significant. IDs retain integer precision. Samples show only IDs and changed
+field paths, never before/after values. `--sample-limit` defaults to 10 per change
+type/resource (0 disables samples; maximum 100). Each changed sample includes at
+most 20 field paths. Raw API snapshots are validated but excluded from logical
+change totals. Historical supplement provenance and freshness-review warnings
+remain visible, including when both archives reuse the same saved source.
+
+Comparison refuses archives with over 10,000 ZIP members, an expanded member
+over 16 MiB or a total expanded size over 512 MiB.
 OpenClaw exposes `trakt_backup` with `output`, `limit`, `delay_ms` and `max_pages`.
 The development CLI and plugin must both include this feature. Large histories can
 take several minutes; use the CLI directly if the plugin timeout is insufficient.
