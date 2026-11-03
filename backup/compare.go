@@ -365,8 +365,9 @@ func addComparisonData(a *comparisonArchive, resource string, data []byte) (int,
 		return 0, fmt.Errorf("unsupported resource %s", resource)
 	}
 	if snapshotResource(resource) {
+		noContent := resource == "user/stats" && bytes.Equal(bytes.TrimSpace(data), []byte("null"))
 		object, err := decodeObject(data)
-		if err != nil || len(object) == 0 {
+		if !noContent && (err != nil || len(object) == 0) {
 			return 0, fmt.Errorf("invalid snapshot %s", resource)
 		}
 		canonical, err := canonicalJSON(data)
@@ -529,6 +530,10 @@ func readComparisonArchive(filename string) (*comparisonArchive, error) {
 			resource, page, err := nativeFileResource(entry.Path)
 			if err != nil {
 				return nil, err
+			}
+			noContent := resource == "user/stats" && bytes.Equal(bytes.TrimSpace(data), []byte("null"))
+			if (noContent && entry.HTTPStatus != 204) || (entry.HTTPStatus != 0 && !(entry.HTTPStatus == 204 && noContent)) {
+				return nil, fmt.Errorf("invalid no-content snapshot metadata")
 			}
 			count, err := addComparisonData(a, resource, data)
 			if err != nil {

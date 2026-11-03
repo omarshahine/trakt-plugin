@@ -99,6 +99,19 @@ func TestBackupDocuments(t *testing.T) {
 	}
 }
 
+func TestBackupEmptyStats204Only(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) }))
+	defer s.Close()
+	c := APIClient{Endpoint: s.URL, Client: s.Client()}
+	data, err := c.GetBackupDocument("sample", "user/stats")
+	if err != nil || string(data) != "null" {
+		t.Fatalf("stats absence lost: %s %v", data, err)
+	}
+	if _, err := c.GetBackupDocument("sample", "user/settings"); err == nil {
+		t.Fatal("missing account snapshot accepted")
+	}
+}
+
 func TestBackupRequestsDoesNotGuessCompleteness(t *testing.T) {
 	for _, scenario := range []string{"empty", "null", "paginated", "denied"} {
 		t.Run(scenario, func(t *testing.T) {

@@ -283,3 +283,43 @@ func TestCompareAccountsAndSupplementFreshness(t *testing.T) {
 		t.Fatal("different accounts compared")
 	}
 }
+
+func TestNoContentStatsRoundTrip(t *testing.T) {
+	f := supplementSource()
+	f.documentData["user/stats"] = raw(`null`)
+	zip := nativeComparisonFixture(t, f)
+	c, err := Compare(zip, zip, 0)
+	if err != nil || c.Changed != 0 {
+		t.Fatalf("no-content stats rejected: %+v %v", c, err)
+	}
+	files := archive(t, zip)
+	var m Manifest
+	if err := json.Unmarshal(files["manifest.json"], &m); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, file := range m.Files {
+		if file.Path == "user/stats.json" {
+			found = true
+			if file.HTTPStatus != 204 || string(files[file.Path]) != "null\n" {
+				t.Fatal("HTTP absence was not recorded")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("missing stats snapshot")
+	}
+	bad := rewriteComparisonZIP(t, zip, func(files map[string][]byte) {
+		for i := range m.Files {
+			m.Files[i].HTTPStatus = 0
+		}
+		data, err := json.Marshal(m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		files["manifest.json"] = data
+	})
+	if _, err := Compare(bad, bad, 0); err == nil {
+		t.Fatal("unmarked null stats accepted")
+	}
+}
