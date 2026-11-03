@@ -79,6 +79,10 @@ function preferenceTools(): ToolDef[] {
 
 // Tool metadata — each maps to a CLI subcommand
 const TOOLS: ToolDef[] = [
+ {name:'trakt_list_update',command:'lists',subcommand:'update',
+ description:'Rename an OWNED custom list or update its description/privacy. Exact numeric LIST ID required (rename can change slug). Default offline preview; omitted fields stay unchanged, explicit empty description clears. Privacy changes can expose contents: require user authorization for chosen visibility. Apply requires expect_user and fresh account/list ownership checks; optional expect_updated_at refuses stale revision. Readback verifies requested values, unrequested settings and existing item identities/order/notes. No atomic lock, automatic retry or rollback; inspect partial/unknown states.',
+ parameters:Type.Object({list:Type.String({pattern:'^[1-9][0-9]*$'}),name:Type.Optional(Type.String({minLength:1,maxLength:255})),description:Type.Optional(Type.String({maxLength:10000})),privacy:Type.Optional(Type.Union(['private','link','friends','public'].map(x=>Type.Literal(x)))),apply:Type.Optional(Type.Boolean({default:false})),expect_user:Type.Optional(Type.String({minLength:1})),expect_updated_at:Type.Optional(Type.String({minLength:1}))})},
+
  ...[{name:'trakt_title_details',mode:'details'},{name:'trakt_show_seasons',mode:'seasons'},{name:'trakt_season_episodes',mode:'episodes'},{name:'trakt_episode_details',mode:'episode'}].map(({name,mode})=>({name,command:'titles',subcommand:mode,
  description:'Read full returned title/season/episode metadata using an exact Trakt MOVIE/SHOW ID. Read-only, no account changes. Season 0 includes specials. Episode air_status uses first_aired relative to as_of: aired/upcoming/unknown; null, missing or invalid dates are unknown, not assumed future. Broadcast time is not watched state or regional streaming availability. Returned ratings are Trakt ratings, not personal scores.',
  parameters:Type.Object({id:Type.String({pattern:'^[1-9][0-9]*$'}),...(mode==='details'?{type:Type.Optional(Type.Union([Type.Literal('movie'),Type.Literal('show')],{default:'show'}))}:{}),...(['episodes','episode'].includes(mode)?{season:Type.Integer({minimum:0,maximum:10000})}:{}),...(mode==='episode'?{episode:Type.Integer({minimum:0,maximum:10000})}:{})})})),
@@ -615,7 +619,7 @@ export default definePluginEntry({
 						}));
 					}
 					const localComparison = tool.command === 'backup' && (tool.subcommand === 'compare' || tool.subcommand === 'plan-restore' || tool.subcommand === 'plan-collection');
-					const listPreview = tool.command === 'lists' && ['create', 'add', 'remove', 'notes', 'reorder'].includes(tool.subcommand ?? '') && params.apply !== true;
+					const listPreview = tool.command === 'lists' && ['create', 'add', 'remove', 'notes', 'reorder', 'update'].includes(tool.subcommand ?? '') && params.apply !== true;
 					const preferencePreview = ['ratings', 'favorites'].includes(tool.command) && ['set', 'add', 'remove'].includes(tool.subcommand ?? '') && params.apply !== true;
 					const historyEventPreview = tool.command === 'history' && tool.subcommand === 'remove-event' && params.apply !== true;
 					const restorePreview = tool.command === 'backup' && ['restore-ratings', 'restore-favorites', 'restore-collections'].includes(tool.subcommand ?? '') && params.apply !== true;
@@ -728,7 +732,7 @@ export default definePluginEntry({
 						if (ratingRestoreOperation) return toolResult(JSON.stringify({ success: false, error: errorOutput, operation: ratingRestoreOperation }, null, 2));
 						// The CLI exits nonzero for partial writes, but stdout retains
 						// structured outcome/counts so callers can inspect before retrying.
-						const listWrite = tool.command === 'lists' && ['create', 'add', 'remove', 'notes', 'reorder'].includes(tool.subcommand ?? '');
+						const listWrite = tool.command === 'lists' && ['create', 'add', 'remove', 'notes', 'reorder', 'update'].includes(tool.subcommand ?? '');
 						const preferenceWrite = ['ratings', 'favorites'].includes(tool.command) && ['set', 'add', 'remove'].includes(tool.subcommand ?? '');
 						if ((listWrite || preferenceWrite) && params.apply === true && error && typeof error === 'object' && 'stdout' in error) {
 							try {

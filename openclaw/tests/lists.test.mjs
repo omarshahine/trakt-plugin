@@ -318,3 +318,13 @@ test('title browsing tools retain exact IDs, specials and closed read-only param
  }
  const t=tools.find(x=>x.name==='trakt_season_episodes');const n=calls.length;await t.execute('bad',{id:'55'});await t.execute('bad',{id:'55',season:-1});assert.equal(calls.length,n);
 });
+
+test('list update previews offline, preserves explicit empty descriptions and forwards account guards',async()=>{
+ const t=tools.find(x=>x.name==='trakt_list_update');const manifest=JSON.parse(readFileSync(new URL('../openclaw.plugin.json',import.meta.url)));assert.ok(t && manifest.contracts.tools.includes(t.name));authConfigured=false;
+ try{await t.execute('preview',{list:'55',description:''});assert.deepEqual(calls.at(-1).args,['lists','update','--list','55','--description','','--json']);const n=calls.length;await t.execute('denied',{list:'55',name:'new',apply:true,expect_user:'sample'});assert.equal(calls.length,n);}finally{authConfigured=true;}
+ await t.execute('apply',{list:'55',name:'new',privacy:'private',expect_user:'sample',expect_updated_at:'revision',apply:true});assert.deepEqual(calls.at(-1).args,['lists','update','--list','55','--name','new','--privacy','private','--expect-user','sample','--expect-updated-at','revision','--apply','--json']);
+});
+test('uncertain list metadata updates retain structured result and are not replayed',async()=>{
+ const t=tools.find(x=>x.name==='trakt_list_update');const n=calls.length;mutationFailure=Object.assign(new Error('synthetic readback failure'),{stdout:JSON.stringify({action:'update',outcome:'unknown',attempted:true,verified:false}),stderr:'readback failed'});
+ try{const r=JSON.parse((await t.execute('uncertain',{list:'55',name:'new',apply:true,expect_user:'sample'})).content[0].text);assert.equal(r.operation.attempted,true);assert.equal(r.operation.verified,false);assert.equal(calls.length,n+1);}finally{mutationFailure=undefined;}
+});

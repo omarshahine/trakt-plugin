@@ -316,3 +316,11 @@ Discovery optionally supports `exclude_watched`, `exclude_watchlisted`, `exclude
 `trakt_episode_details` retain full returned metadata. Season 0 supports specials;
 air_status is aired/upcoming/unknown relative to as_of, never a claim of watched
 state or streaming availability. See [commands and scope](../docs/title-browsing.md).
+
+### List metadata updates
+
+`trakt_list_update` previews name/description/privacy edits offline. Numeric LIST
+ID required; omitted fields are preserved, explicitly empty description clears.
+Apply requires expect_user; optional expect_updated_at rejects stale revisions.
+Readback verifies metadata and list contents/order. See
+[contract and live acceptance](../docs/list-metadata-update.md).

@@ -170,6 +170,16 @@ regular episode list/details and season-0 specials list/details (306 specials).
 Aired classification passed live; future/unknown/boundary/offset semantics are
 synthetic-tested, not positive live claims. No account writes or credential changes.
 
+## List metadata editing
+
+Implemented locally: `lists update` and `trakt_list_update`; see
+[list-metadata-update.md](list-metadata-update.md). Nine actual test-account
+plugin cases passed, including explicit-field rename, description set/clear,
+private-to-link, no-op, wrong-account/stale refusal and restoration. Original
+fields and all four raw list-item objects/order/notes matched baseline afterward;
+only updated_at advanced. Credential bytes unchanged. No public/friends live
+transition or production-account fallback, and no installation/release.
+
 ## Next steps
 
 1. Submit/review the empty-statistics fix and the pending restore-planner,

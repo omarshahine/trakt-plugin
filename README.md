@@ -614,3 +614,5 @@ Missing-only collection restore executor: [contract and live acceptance](docs/co
 Discovery: trending/popular movies and shows, related titles and account recommendations are available through `discover`. See [commands and limits](docs/discovery.md).
 
 Title details and season/episode browsing: [commands and date semantics](docs/title-browsing.md).
+
+List renaming, description and privacy updates: [explicit-field previews and verified application](docs/list-metadata-update.md).
