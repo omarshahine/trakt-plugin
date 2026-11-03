@@ -245,7 +245,7 @@ func TestExportNeverOverwrites(t *testing.T) {
 	}
 }
 
-func TestExportRejectsStaleCountersBeforeWalkingAllPages(t *testing.T) {
+func TestExportRejectsIncorrectTerminalCount(t *testing.T) {
 	f := fixture()
 	for i := 14; i < 40; i++ {
 		f.data["history"] = append(f.data["history"], raw(fmt.Sprintf(`{"id":%d}`, i)))
@@ -257,10 +257,54 @@ func TestExportRejectsStaleCountersBeforeWalkingAllPages(t *testing.T) {
 		return rows, p, nil
 	}
 	m, err := Export(f, options(t))
-	if err == nil || m.Complete || !strings.Contains(err.Error(), "terminal-page probe") {
+	if err == nil || m.Complete || !strings.Contains(err.Error(), "terminal total") {
 		t.Fatalf("%+v %v", m, err)
 	}
-	if len(f.requests) != 2 {
-		t.Fatalf("walked stale pages: %v", f.requests)
+}
+
+func TestExportHistoryReconcilesStaleCounts(t *testing.T) {
+	for _, earlier := range []string{"6", "10"} {
+		for _, scenario := range []string{"stable", "duplicate", "empty_terminal", "changed_activity", "changed_pages", "changed_limit"} {
+			t.Run(earlier+"/"+scenario, func(t *testing.T) {
+				f := fixture()
+				f.data["history"] = nil
+				for i := 1; i <= 9; i++ {
+					f.data["history"] = append(f.data["history"], raw(fmt.Sprintf(`{"id":%d}`, i)))
+				}
+				f.changed = scenario == "changed_activity"
+				f.intercept = func(key string, page int, rows []json.RawMessage, p api.Pagination) ([]json.RawMessage, api.Pagination, error) {
+					if key == "history" {
+						if page == 1 {
+							p.ItemCount = earlier
+						}
+						if page == 2 {
+							switch scenario {
+							case "duplicate":
+								rows = append([]json.RawMessage(nil), rows...)
+								rows[0] = f.data["history"][0]
+							case "empty_terminal":
+								rows = nil
+							case "changed_pages":
+								p.PageCount = "3"
+								p.ItemCount = "11"
+							case "changed_limit":
+								p.Limit = "6"
+							}
+						}
+					}
+					return rows, p, nil
+				}
+				o := options(t)
+				o.Limit = 5
+				m, err := Export(f, o)
+				if scenario == "stable" {
+					if err != nil || !m.Complete || m.Resources[0].Records != 9 || m.Resources[0].Expected != 9 {
+						t.Fatalf("stale count not reconciled: %+v %v", m, err)
+					}
+				} else if err == nil || m.Complete {
+					t.Fatalf("unsafe export accepted: %+v %v", m, err)
+				}
+			})
+		}
 	}
 }

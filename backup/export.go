@@ -202,12 +202,22 @@ func (x *exporter) collect(resource, listID string, metadataCount int) ([]json.R
 			if metadataCount >= 0 && total != metadataCount {
 				return nil, fmt.Errorf("%s: item count differs from list metadata", name)
 			}
-		} else if pages != pageCount || nums[3] != total || nums[1] != reportedLimit {
+		} else if pages != pageCount || (resource != "history" && nums[3] != total) || nums[1] != reportedLimit {
 			return nil, fmt.Errorf("%s page %d: pagination changed during export (total %d -> %d, limit %d -> %d, pages %d -> %d)", name, page, total, nums[3], reportedLimit, nums[1], pageCount, pages)
 		}
 		expected := reportedLimit
 		if page == pageCount {
+			// History's earlier pages can carry a stale item count even when
+			// the records and activity markers are stable. Reconcile against
+			// the terminal page, without relaxing page shape or ID checks.
+			if resource == "history" {
+				total = nums[3]
+				x.manifest.Resources[index].Expected = total
+			}
 			expected = total - (page-1)*reportedLimit
+			if x.manifest.Resources[index].Records+len(records) != total {
+				return nil, fmt.Errorf("%s: terminal total does not match collected records", name)
+			}
 		}
 		if len(records) != expected {
 			return nil, fmt.Errorf("%s page %d: got %d records, expected %d", name, page, len(records), expected)
@@ -256,20 +266,6 @@ func (x *exporter) collect(resource, listID string, metadataCount int) ([]json.R
 		}
 		if x.options.Progress != nil {
 			x.options.Progress(x.manifest.Resources[index])
-		}
-		// Probe the terminal page early: stale/inconsistent Trakt counters
-		// should not cost hundreds of requests before being detected. Fetch it
-		// again in sequence later; the probe is not substituted into the ZIP.
-		if page == 1 && pageCount > 1 && pageCount <= x.options.MaxPages {
-			x.wait()
-			last, lastPage, probeErr := x.source.GetBackupPage(x.options.User, resource, listID, api.PaginationsParams{Page: pageCount, Limit: x.options.Limit})
-			if probeErr != nil {
-				return nil, fmt.Errorf("%s terminal-page probe: %w", name, probeErr)
-			}
-			lastExpected := total - (pageCount-1)*reportedLimit
-			if lastPage.Page != strconv.Itoa(pageCount) || lastPage.Limit != p.Limit || lastPage.PageCount != p.PageCount || lastPage.ItemCount != p.ItemCount || len(last) != lastExpected {
-				return nil, fmt.Errorf("%s: terminal-page probe disagrees with first page (total %s -> %s, final-page records %d expected %d); completeness cannot be verified", name, p.ItemCount, lastPage.ItemCount, len(last), lastExpected)
-			}
 		}
 		if resource == "lists" {
 			inventory = append(inventory, records...)
