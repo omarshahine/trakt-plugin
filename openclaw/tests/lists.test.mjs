@@ -55,8 +55,8 @@ test('list items pass the slug as one argument, not shell text', async () => {
 test('backup forwards a local path as one argument without invoking a shell', async () => {
 	const tool = tools.find((tool) => tool.name === 'trakt_backup');
 	const output = '/synthetic/private backups/new.zip';
-	await tool.execute('test', { output, limit: 250, delay_ms: 0, max_pages: 10 });
-	assert.deepEqual(calls.at(-1).args, ['backup', '--output', output, '--limit', '250', '--delay-ms', '0', '--max-pages', '10', '--json']);
+	await tool.execute('test', { output, limit: 250, delay_ms: 0, max_pages: 10, website_supplement: '/synthetic/private supplements/account.json' });
+	assert.deepEqual(calls.at(-1).args, ['backup', '--output', output, '--limit', '250', '--delay-ms', '0', '--max-pages', '10', '--website-supplement', '/synthetic/private supplements/account.json', '--json']);
 	assert.deepEqual(tool.parameters.required, ['output']);
 	const manifest = JSON.parse(readFileSync(new URL('../openclaw.plugin.json', import.meta.url)));
 	assert.ok(manifest.contracts.tools.includes('trakt_backup'));

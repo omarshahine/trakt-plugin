@@ -122,6 +122,7 @@ const TOOLS: ToolDef[] = [
 			limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000, description: 'Records per API page (default 1000)' })),
 			delay_ms: Type.Optional(Type.Integer({ minimum: 0, description: 'Minimum milliseconds between requests (default 1000)' })),
 			max_pages: Type.Optional(Type.Integer({ minimum: 1, description: 'Maximum pages per resource (default 10000); hitting it makes export incomplete' })),
+			website_supplement: Type.Optional(Type.String({ minLength: 1, description: 'Local JSON from backup import-supplement; fills only missing website-only account fields, preserves raw API snapshots and records historical provenance' })),
 		}),
 	},
 	{

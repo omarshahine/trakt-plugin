@@ -23,11 +23,12 @@ type Source interface {
 }
 
 type Options struct {
-	User     string
-	Output   string
-	Limit    int
-	Delay    time.Duration
-	MaxPages int
+	User              string
+	Output            string
+	Limit             int
+	Delay             time.Duration
+	MaxPages          int
+	WebsiteSupplement *WebsiteSupplement
 	// Progress receives observed counts after a page is safely added to the ZIP.
 	Progress func(Resource)
 }
@@ -45,16 +46,18 @@ type Resource struct {
 	Complete bool   `json:"complete"`
 }
 type Manifest struct {
-	Version     int        `json:"version"`
-	StartedAt   time.Time  `json:"started_at"`
-	FinishedAt  time.Time  `json:"finished_at"`
-	Scopes      []string   `json:"scopes"`
-	Excluded    []string   `json:"excluded"`
-	Complete    bool       `json:"complete"`
-	Consistency string     `json:"consistency"`
-	Files       []File     `json:"files"`
-	Resources   []Resource `json:"resources"`
-	Errors      []string   `json:"errors"`
+	Mode        string                `json:"mode"`
+	Supplement  *SupplementProvenance `json:"supplement,omitempty"`
+	Version     int                   `json:"version"`
+	StartedAt   time.Time             `json:"started_at"`
+	FinishedAt  time.Time             `json:"finished_at"`
+	Scopes      []string              `json:"scopes"`
+	Excluded    []string              `json:"excluded"`
+	Complete    bool                  `json:"complete"`
+	Consistency string                `json:"consistency"`
+	Files       []File                `json:"files"`
+	Resources   []Resource            `json:"resources"`
+	Errors      []string              `json:"errors"`
 }
 
 type exporter struct {
@@ -74,6 +77,14 @@ func Export(source Source, o Options) (m Manifest, err error) {
 	if o.User == "" || o.Output == "" || o.Limit < 1 || o.Limit > 1000 || o.Delay < 0 || o.MaxPages < 1 {
 		return m, fmt.Errorf("user/output required; limit 1-1000, nonnegative delay and positive max-pages required")
 	}
+	if o.WebsiteSupplement != nil {
+		if err := o.WebsiteSupplement.validate(); err != nil {
+			return m, err
+		}
+		if o.User != o.WebsiteSupplement.Slug {
+			return m, fmt.Errorf("supplement is for a different account")
+		}
+	}
 	f, err := os.OpenFile(o.Output, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		return m, err
@@ -81,6 +92,11 @@ func Export(source Source, o Options) (m Manifest, err error) {
 	m = Manifest{Version: 1, StartedAt: time.Now().UTC(), Scopes: []string{"history", "watchlist", "custom_lists", "ratings", "collections", "favorites", "account_snapshots", "saved_filters", "playback", "watched_summaries", "hidden_items", "comments_including_replies", "notes", "social", "likes", "collaborated_list_metadata"},
 		Excluded:    []string{"collaborated_list_contents_owned_by_others", "website_fields_not_returned_by_api"},
 		Consistency: "unverified", Files: []File{}, Resources: []Resource{}, Errors: []string{}}
+	m.Mode = "api_only"
+	if o.WebsiteSupplement != nil {
+		m.Mode = "website_supplemented"
+		m.Supplement = &SupplementProvenance{Source: o.WebsiteSupplement.Source, Freshness: "historical_values_not_revalidated", AppliedFields: []string{}, RawAPIPaths: []string{}}
+	}
 	x := exporter{source: source, options: o, zip: zip.NewWriter(f), manifest: &m}
 	workErr := x.run()
 	if workErr != nil {
@@ -132,6 +148,19 @@ func (x *exporter) run() error {
 		data, err := x.source.GetBackupDocument(x.options.User, resource)
 		if err != nil {
 			return fmt.Errorf("%s: %w", resource, err)
+		}
+		if x.options.WebsiteSupplement != nil && (resource == "user/settings" || resource == "user/profile") {
+			merged, applied, err := x.options.WebsiteSupplement.merge(resource, data)
+			if err != nil {
+				return fmt.Errorf("%s: %w", resource, err)
+			}
+			rawPath := "raw-api/" + resource
+			if err := x.document(rawPath, data); err != nil {
+				return err
+			}
+			x.manifest.Supplement.RawAPIPaths = append(x.manifest.Supplement.RawAPIPaths, rawPath+".json")
+			x.manifest.Supplement.AppliedFields = append(x.manifest.Supplement.AppliedFields, applied...)
+			data = merged
 		}
 		if err := x.document(resource, data); err != nil {
 			return err

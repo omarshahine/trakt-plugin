@@ -126,6 +126,34 @@ For example, third-party API responses can omit the account email, date of birth
 and numeric user Trakt ID even when the website export contains them. These fields
 are not fabricated or recovered from an older export. Likewise, playback entries
 no longer returned by the live API are not resurrected from earlier snapshots.
+
+#### Optional website-only account fields
+
+```bash
+trakt-cli backup import-supplement --website-export ./official.zip --output ./account-supplement.json
+trakt-cli backup --output ./supplemented.zip --website-supplement ./account-supplement.json --json
+```
+
+Import saves only the account email, date of birth and numeric user ID, with
+account slug/UUID and the official ZIP's SHA-256. The import source is unchanged;
+existing supplement/output files are never overwritten. The supplement contains
+private account data and should stay private. Import output does not print its values.
+
+Opt-in exports bind the supplement to the live settings UUID and account slug.
+The profile must match that slug and any UUID/numeric ID it returns. Only absent
+keys are filled: an explicit null or value from the current API is retained.
+The original API settings/profile remain under `raw-api/user/`; supplemented
+versions are under `user/`, with checksums for both.
+
+The manifest's `mode` is `api_only` by default or `website_supplemented` when
+enabled. Its `supplement` section records the source checksum, import timestamp,
+applied field paths and raw API paths, and marks values as historical and not
+revalidated. The website snapshot time is explicitly unknown, not inferred from
+the import time. Import a new supplement after account details change; the
+exporter does not fetch or refresh these saved values automatically.
+
+This closes known missing account-field paths, not a promise that a newer backup
+equals an older website snapshot or that future website fields are covered.
 OpenClaw exposes `trakt_backup` with `output`, `limit`, `delay_ms` and `max_pages`.
 The development CLI and plugin must both include this feature. Large histories can
 take several minutes; use the CLI directly if the plugin timeout is insufficient.
