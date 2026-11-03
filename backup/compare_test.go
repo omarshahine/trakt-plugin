@@ -169,7 +169,9 @@ func TestCompareCoverageDifferenceIsNotDeletion(t *testing.T) {
 	before := nativeComparisonFixture(t, fixture())
 	after := rewriteComparisonZIP(t, before, func(files map[string][]byte) {
 		var m Manifest
-		json.Unmarshal(files["manifest.json"], &m)
+		if err := json.Unmarshal(files["manifest.json"], &m); err != nil {
+			t.Fatal(err)
+		}
 		kept := []File{}
 		for _, e := range m.Files {
 			if strings.HasPrefix(e.Path, "ratings/movies/") {
@@ -218,7 +220,9 @@ func writeWebsiteComparisonZIP(t *testing.T, files map[string]string) string {
 	if err := z.Close(); err != nil {
 		t.Fatal(err)
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
 	return p
 }
 
