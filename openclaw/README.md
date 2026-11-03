@@ -43,6 +43,26 @@ Or set `TRAKT_CLI_PATH` environment variable, or configure `cliPath` in plugin s
 
 MIT
 
+### Custom-list management
+
+The tools `trakt_list_create`, `trakt_list_add`, `trakt_list_remove`,
+`trakt_list_notes` and `trakt_list_reorder` default to offline previews, requiring
+no login. Only explicit `apply: true` executes a write against the token's freshly
+resolved account. Obtain user authorization before applying. New lists default
+private. Membership accepts Trakt media IDs as strings; notes and ordering require
+list-entry IDs from `trakt_list_items`. Only movie/show/season/episode membership
+is supported. Empty notes clear them; notes are VIP-only and capped at 500 code
+points. Non-VIP owners are refused before a notes write; HTTP 420 reports list/item
+limits without retries.
+
+Reorder takes the complete ordered set of current list-entry IDs, checks all
+pages and stable list metadata, and refuses missing/stale/duplicate IDs. This is
+not a transactional lock. Display sorting is unchanged. Partial outcomes preserve
+available counts and exit nonzero; uncertain writes must be inspected, never
+automatically replayed. No whole-list delete, history edits, or collaboration-owner
+selection is added. Names and notes in previews/results are private account data.
+Synthetic tests verify contracts; live mutation acceptance is not yet tested.
+
 ### Custom lists (read-only)
 
 ```bash

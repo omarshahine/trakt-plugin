@@ -303,6 +303,58 @@ claude --plugin-dir /path/to/trakt-plugin
 
 Originally forked from [angristan/trakt-cli](https://github.com/angristan/trakt-cli). Extended with watchlist, progress, history add commands, `--json` output, and AI agent plugin packaging.
 
+### Custom-list management (preview first)
+
+```bash
+# All commands below are OFFLINE previews; no login or requests are performed.
+trakt-cli lists create --name "Weekend films" --privacy private --json
+trakt-cli lists add --list 12345 --type movie --ids 55,56 --json
+trakt-cli lists remove --list 12345 --type episode --ids 123 --json
+trakt-cli lists notes --list 12345 --item 900 --notes "Watch together" --json
+trakt-cli lists notes --list 12345 --item 900 --notes="" --json
+trakt-cli lists reorder --list 12345 --rank 901,900,902 --json
+```
+
+Add **`--apply`** only when you intend to execute that write. The CLI resolves the
+token's current account through settings rather than trusting a cached account
+slug. It operates on that account's owned lists, not another owner's collaborative
+lists. Preview `me` is a placeholder resolved only when applying. New lists default
+to private; `link`, `friends` and `public` require explicit selection. Existing
+`lists` and `lists items` reads remain read-only. Whole-list deletion is not added.
+
+Membership uses canonical positive **Trakt media IDs**; supported types are
+movie, show, season and episode. Notes/reordering instead use **list-entry IDs**
+from `lists items`. IDs are strings at the CLI/plugin boundary and exact integer
+JSON values on the wire, preserving large IDs. Duplicates and invalid IDs fail
+before requests. Notes are limited to 500 Unicode code points; explicitly empty
+notes clear them. **Notes require VIP**: apply checks the account first and refuses
+to write for non-VIP accounts rather than reporting an ignored edit as success.
+Free-account list/item limits can still reject creation/addition with HTTP 420.
+
+Reorder requires a complete permutation of every current list-entry ID. Applying
+reads all pages, checks IDs/counts and compares list metadata before/after reading;
+missing headers, missing IDs, duplicates, stale ranks or detected changes abort
+before writing. There is no transactional lock between preflight and POST. Manual
+rank changes may not be visible while the list is displayed with another sort;
+the command does not change the list's display-sort setting.
+
+Mutations are never automatically replayed, including after 401, rate limits or
+uncertain network outcomes. Inspect the list before a manual retry. Partial or
+malformed success responses exit nonzero; structured CLI stdout and plugin error
+results preserve available mutation outcomes, counts and `not_found`/`skipped_ids`.
+An uncertain response does not prove nothing changed. Previews/results can contain
+private list names/notes; do not publish them.
+
+OpenClaw tools: `trakt_list_create`, `trakt_list_add`, `trakt_list_remove`,
+`trakt_list_notes`, `trakt_list_reorder`. Each defaults to offline preview;
+`apply: true` explicitly writes and requires login. Preview and obtain the user's
+authorization before applying. No automatic fallback writes are performed.
+
+Contract reference: [Trakt's published list routes](https://github.com/trakt/trakt-api/blob/master/projects/api/src/contracts/users/subroutes/userLists.ts).
+Tests use synthetic local HTTP servers, not real Trakt writes. End-to-end server
+acceptance and free-account limits need a separate test account; VIP-only notes
+cannot be fully live-verified with a non-VIP account.
+
 ## License
 
 MIT

@@ -5,9 +5,11 @@ import { mock, test } from 'node:test';
 
 // Synthetic subprocess responses only: no local credentials or Trakt calls.
 const calls = [];
+let mutationFailure;
 const execFile = () => { throw new Error('unexpected callback invocation'); };
 execFile[promisify.custom] = async (file, args) => {
 	calls.push({ file, args });
+	if (mutationFailure) throw mutationFailure;
 	return { stdout: JSON.stringify({ items: [], page: '2', page_count: '3' }), stderr: '' };
 };
 mock.module('child_process', {
@@ -78,4 +80,48 @@ test('local backup comparison works without auth and passes paths as literal arg
 	} finally {
 		authConfigured = true;
 	}
+});
+
+test('all list writes preview offline and require explicit apply to pass the gate', async () => {
+	const manifest = JSON.parse(readFileSync(new URL('../openclaw.plugin.json', import.meta.url)));
+	const cases = [
+		['create', { name: 'Synthetic; literal', privacy: 'private' }, ['--name', 'Synthetic; literal', '--privacy', 'private']],
+		['add', { list: '7', type: 'movie', ids: ['9007199254740993', '55'] }, ['--list', '7', '--type', 'movie', '--ids', '9007199254740993,55']],
+		['remove', { list: '7', type: 'episode', ids: ['55'] }, ['--list', '7', '--type', 'episode', '--ids', '55']],
+		['notes', { list: '7', item: '900', notes: '' }, ['--list', '7', '--item', '900', '--notes', '']],
+		['reorder', { list: '7', rank: ['901', '900'] }, ['--list', '7', '--rank', '901,900']],
+	];
+	authConfigured = false;
+	try {
+		for (const [action, params, expected] of cases) {
+			const tool = tools.find(t => t.name === `trakt_list_${action}`);
+			assert.ok(tool && manifest.contracts.tools.includes(tool.name));
+			await tool.execute('test', params);
+			assert.deepEqual(calls.at(-1).args, ['lists', action, ...expected, '--json']);
+			const count = calls.length;
+			const denied = await tool.execute('test', { ...params, apply: true });
+			assert.equal(calls.length, count);
+			assert.equal(JSON.parse(denied.content[0].text).success, false);
+		}
+	} finally { authConfigured = true; }
+	const tool = tools.find(t => t.name === 'trakt_list_remove');
+	await tool.execute('test', { list: '7', type: 'movie', ids: ['55'], apply: true });
+	assert.deepEqual(calls.at(-1).args, ['lists', 'remove', '--list', '7', '--type', 'movie', '--ids', '55', '--apply', '--json']);
+});
+
+test('partial list writes preserve structured results and are not retried', async () => {
+	const tool = tools.find(t => t.name === 'trakt_list_add');
+	mutationFailure = Object.assign(new Error('synthetic partial membership result'), {
+		stdout: JSON.stringify({ action: 'add', outcome: 'partial', http_status: 201, response: { added: { movies: 1 }, not_found: { movies: [{ ids: { trakt: 56 } }] } } }),
+		stderr: 'some items were not found; inspect result before retrying',
+	});
+	const count = calls.length;
+	try {
+		const result = await tool.execute('test', { list: '7', type: 'movie', ids: ['55', '56'], apply: true });
+		const parsed = JSON.parse(result.content[0].text);
+		assert.equal(parsed.success, false);
+		assert.equal(parsed.operation.outcome, 'partial');
+		assert.equal(parsed.operation.response.added.movies, 1);
+		assert.equal(calls.length, count + 1);
+	} finally { mutationFailure = undefined; }
 });

@@ -45,6 +45,45 @@ const SYNC_TOOL: ToolDef = {
 // Tool metadata — each maps to a CLI subcommand
 const TOOLS: ToolDef[] = [
 	{
+		name: 'trakt_list_create', command: 'lists', subcommand: 'create',
+		description: 'Create an owned custom list. Defaults to offline preview; apply=true explicitly writes to the authenticated account. Privacy defaults private. Preview first and obtain user authorization for the write. Do not blindly retry after an uncertain outcome.',
+		parameters: Type.Object({
+			name: Type.String({ minLength: 1, description: 'New list name' }),
+			description: Type.Optional(Type.String({ description: 'List description' })),
+			privacy: Type.Optional(Type.Union(['private', 'link', 'friends', 'public'].map(value => Type.Literal(value)), { description: 'Privacy; default private' })),
+			apply: Type.Optional(Type.Boolean({ default: false, description: 'Explicitly execute the write; otherwise preview without login or network' })),
+		}),
+	},
+	...(['add', 'remove'] as const).map(action => ({
+		name: `trakt_list_${action}`, command: 'lists', subcommand: action,
+		description: `${action === 'add' ? 'Add' : 'Remove'} media on an owned custom list by Trakt MEDIA IDs. Defaults to offline preview; apply=true explicitly writes. No title guessing, whole-list deletion or history edits. Inspect partial/not_found results; do not automatically retry uncertain writes.`,
+		parameters: Type.Object({
+			list: Type.String({ minLength: 1, description: 'Owned list ID or slug' }),
+			type: Type.Union(['movie', 'show', 'season', 'episode'].map(value => Type.Literal(value))),
+			ids: Type.Array(Type.String({ pattern: '^[1-9][0-9]*$' }), { minItems: 1, maxItems: 10000, uniqueItems: true, description: 'Trakt MEDIA IDs as strings, not list-entry IDs' }),
+			apply: Type.Optional(Type.Boolean({ default: false, description: 'Execute the explicitly authorized write; default preview' })),
+		}),
+	})),
+	{
+		name: 'trakt_list_notes', command: 'lists', subcommand: 'notes',
+		description: 'Edit notes for one owned custom-list ENTRY ID, not a media ID. VIP only; empty notes clears them. Defaults offline preview; apply=true explicitly writes after VIP verification. Preview and obtain user authorization before applying.',
+		parameters: Type.Object({
+			list: Type.String({ minLength: 1 }),
+			item: Type.String({ pattern: '^[1-9][0-9]*$', description: 'List ENTRY ID from trakt_list_items' }),
+			notes: Type.String({ maxLength: 500, description: 'New notes; explicitly empty clears them (VIP)' }),
+			apply: Type.Optional(Type.Boolean({ default: false })),
+		}),
+	},
+	{
+		name: 'trakt_list_reorder', command: 'lists', subcommand: 'reorder',
+		description: 'Reorder an owned custom list using ALL current list ENTRY IDs, not media IDs. Defaults offline preview. apply=true verifies complete membership and stable metadata before writing; no transactional lock is available. The list display sort may need rank to show manual order; this command does not change that setting. Obtain user authorization before applying.',
+		parameters: Type.Object({
+			list: Type.String({ minLength: 1 }),
+			rank: Type.Array(Type.String({ pattern: '^[1-9][0-9]*$' }), { minItems: 1, maxItems: 10000, uniqueItems: true, description: 'Complete list ENTRY IDs in desired order' }),
+			apply: Type.Optional(Type.Boolean({ default: false })),
+		}),
+	},
+	{
 		name: 'trakt_search',
 		command: 'search',
 		description:
@@ -402,7 +441,8 @@ export default definePluginEntry({
 
 				async execute(_id: string, params: Record<string, unknown>) {
 					const localComparison = tool.command === 'backup' && tool.subcommand === 'compare';
-					if (tool.command !== 'auth' && !localComparison && !isAuthConfigured()) {
+					const listPreview = tool.command === 'lists' && ['create', 'add', 'remove', 'notes', 'reorder'].includes(tool.subcommand ?? '') && params.apply !== true;
+					if (tool.command !== 'auth' && !localComparison && !listPreview && !isAuthConfigured()) {
 						return toolResult(
 							JSON.stringify(
 								{
@@ -478,6 +518,16 @@ export default definePluginEntry({
 							);
 						}
 
+						// The CLI exits nonzero for partial writes, but stdout retains
+						// structured outcome/counts so callers can inspect before retrying.
+						if (tool.command === 'lists' && ['create', 'add', 'remove', 'notes', 'reorder'].includes(tool.subcommand ?? '') && params.apply === true && error && typeof error === 'object' && 'stdout' in error) {
+							try {
+								const operation = JSON.parse(String((error as { stdout: unknown }).stdout));
+								if (operation?.action === tool.subcommand && ['not_attempted', 'unknown', 'partial'].includes(operation.outcome)) {
+									return toolResult(JSON.stringify({ success: false, error: errorOutput, operation }, null, 2));
+								}
+							} catch { /* Fall through to the ordinary error without replay. */ }
+						}
 						return toolResult(
 							JSON.stringify({ success: false, error: errorOutput }, null, 2)
 						);

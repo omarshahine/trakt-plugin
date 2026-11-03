@@ -12,8 +12,8 @@ import (
 // newListsCmd keeps command state local so tests can execute fresh commands.
 func newListsCmd() *cobra.Command {
 	lists := &cobra.Command{
-		Use: "lists", Short: "View your custom lists",
-		Long: "Read your custom lists, including private lists accessible to your authenticated account. This does not modify lists.",
+		Use: "lists", Short: "Read or explicitly manage your custom lists",
+		Long: "Read custom lists, or preview management commands offline. Mutations require an explicit --apply flag. Reading lists and items remains read-only.",
 		Args: cobra.NoArgs,
 		RunE: runCustomLists(false),
 	}
@@ -27,6 +27,7 @@ func newListsCmd() *cobra.Command {
 	items.Flags().String("list", "", "Custom list Trakt ID or slug (required)")
 	_ = items.MarkFlagRequired("list")
 	lists.AddCommand(items)
+	addListMutationCommands(lists)
 	return lists
 }
 
