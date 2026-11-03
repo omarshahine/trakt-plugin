@@ -109,6 +109,8 @@ type AuthDeviceCodeResp struct {
 }
 
 type requestParams struct {
+	// noCache asks intermediaries to revalidate backup reads across pages.
+	noCache    bool
 	method     string
 	path       string
 	body       interface{}
@@ -209,6 +211,9 @@ func (c *APIClient) doRequest(params requestParams) (*http.Response, error) {
 
 	req.Header.Add("Accept", "application/json")
 	req.Header.Add("trakt-api-version", "2")
+	if params.noCache {
+		req.Header.Set("Cache-Control", "no-cache")
+	}
 
 	if params.body != nil {
 		req.Header.Add("Content-Type", "application/json")
