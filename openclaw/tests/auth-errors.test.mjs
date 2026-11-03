@@ -5,8 +5,12 @@ import { mock, test } from 'node:test';
 const secret = 'synthetic-secret with spaces';
 const clientId = 'synthetic-client-id';
 let failure;
+let stdout = '';
 const execFile = () => { throw new Error('unexpected callback invocation'); };
-execFile[promisify.custom] = async () => { throw failure; };
+execFile[promisify.custom] = async () => {
+	if (failure !== undefined) throw failure;
+	return { stdout, stderr: '' };
+};
 mock.module('child_process', { namedExports: { execFile, execFileSync: () => '/synthetic/trakt-cli' } });
 mock.module('fs', { namedExports: { existsSync: () => true } });
 mock.module('openclaw/plugin-sdk/plugin-entry', { namedExports: { definePluginEntry: (entry) => entry } });
@@ -25,6 +29,11 @@ test('authentication failures never expose command lines, stdout or stderr', asy
 		Object.assign(new Error(`spawn failed: ${secret}`), { code: 'ENOENT' }),
 		{ stderr: secret, stdout: secret, message: secret },
 		secret,
+		Object.assign(new Error('authentication timed out'), { killed: true, signal: 'SIGTERM' }),
+		Object.assign(new Error(`rate limited by trakt api: 429 (retry_after=17) ${secret}`), { stderr: secret }),
+		Object.defineProperty(new Error(secret), 'stderr', { get() { throw new Error('must not inspect stderr'); } }),
+		{ toString() { throw new Error('must not stringify authentication errors'); } },
+		null,
 	]) {
 		failure = error;
 		const result = await tools.find((tool) => tool.name === 'trakt_auth').execute('test', {});
@@ -43,4 +52,13 @@ test('non-auth rate limit diagnostics still work', async () => {
 	const response = JSON.parse(result.content[0].text);
 	assert.equal(response.rate_limited, true);
 	assert.equal(response.retry_after_seconds, 17);
+});
+
+// Successful device authorization must still reach the agent so it can show
+// the user the verification URI and code. No real authentication is performed.
+test('successful authentication still returns device authorization instructions', async () => {
+	failure = undefined;
+	stdout = 'Visit https://example.invalid/activate and enter SYNTHETIC-CODE';
+	const result = await tools.find((tool) => tool.name === 'trakt_auth').execute('test', {});
+	assert.equal(JSON.parse(result.content[0].text).output, stdout);
 });
