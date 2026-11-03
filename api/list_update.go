@@ -78,6 +78,7 @@ type listEditState struct {
 	Updated     string
 	Count       int
 	ItemsHash   string
+	Items       map[string]json.RawMessage
 }
 
 func (c *APIClient) listEditMetadata(owner, id string) (listEditState, error) {
@@ -126,6 +127,7 @@ func (c *APIClient) stableListEditState(owner, id string) (listEditState, error)
 		return before, err
 	}
 	items := map[string]json.RawMessage{}
+	ranks := map[int]bool{}
 	err = c.walkStrictRecords("/users/"+url.PathEscape(owner)+"/lists/"+id+"/items", 1000, 100000, func(raw json.RawMessage) error {
 		var row map[string]json.RawMessage
 		if json.Unmarshal(raw, &row) != nil || row == nil {
@@ -137,6 +139,10 @@ func (c *APIClient) stableListEditState(owner, id string) (listEditState, error)
 		if json.Unmarshal(row["id"], &entry) != nil || json.Unmarshal(row["type"], &kind) != nil || json.Unmarshal(row["rank"], &rank) != nil || rank == nil || *rank < 1 {
 			return fmt.Errorf("list item identity/rank missing")
 		}
+		if ranks[*rank] {
+			return fmt.Errorf("duplicate list rank; cannot verify order")
+		}
+		ranks[*rank] = true
 		if _, err := listID(entry.String()); err != nil {
 			return err
 		}
@@ -190,6 +196,7 @@ func (c *APIClient) stableListEditState(owner, id string) (listEditState, error)
 	}
 	sum := sha256.Sum256(encoded)
 	before.ItemsHash = hex.EncodeToString(sum[:])
+	before.Items = items
 	return before, nil
 }
 

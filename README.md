@@ -616,3 +616,5 @@ Discovery: trending/popular movies and shows, related titles and account recomme
 Title details and season/episode browsing: [commands and date semantics](docs/title-browsing.md).
 
 List renaming, description and privacy updates: [explicit-field previews and verified application](docs/list-metadata-update.md).
+
+Verified selected-membership list copy/move: [preview, verification and limits](docs/list-transfers.md).

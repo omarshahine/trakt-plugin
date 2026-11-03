@@ -79,6 +79,10 @@ function preferenceTools(): ToolDef[] {
 
 // Tool metadata — each maps to a CLI subcommand
 const TOOLS: ToolDef[] = [
+ ...['copy','move'].map(action=>({name:`trakt_list_${action}`,command:'lists',subcommand:action,
+ description:`Preview or explicitly ${action} 1-100 selected movie/show/season/episode memberships between OWNED lists using numeric LIST IDs and exact MEDIA IDs. Default offline preview. Apply needs expect_user and current ownership. Destination is read back before any source deletion; changed/unverified states stop. No atomic cross-list transaction, automatic mutation retries or rollback. Notes/dates/new ranks are not copied; move refuses note-bearing source entries. Existing destination entries stay untouched. Inspect stage/add_attempted/remove_attempted/partial outcomes.`,
+ parameters:Type.Object({source:Type.String({pattern:'^[1-9][0-9]*$'}),destination:Type.String({pattern:'^[1-9][0-9]*$'}),type:Type.Union(['movie','show','season','episode'].map(t=>Type.Literal(t))),ids:Type.Array(Type.String({pattern:'^[1-9][0-9]*$'}),{minItems:1,maxItems:100,uniqueItems:true}),apply:Type.Optional(Type.Boolean({default:false})),expect_user:Type.Optional(Type.String({minLength:1}))})})),
+
  {name:'trakt_list_update',command:'lists',subcommand:'update',
  description:'Rename an OWNED custom list or update its description/privacy. Exact numeric LIST ID required (rename can change slug). Default offline preview; omitted fields stay unchanged, explicit empty description clears. Privacy changes can expose contents: require user authorization for chosen visibility. Apply requires expect_user and fresh account/list ownership checks; optional expect_updated_at refuses stale revision. Readback verifies requested values, unrequested settings and existing item identities/order/notes. No atomic lock, automatic retry or rollback; inspect partial/unknown states.',
  parameters:Type.Object({list:Type.String({pattern:'^[1-9][0-9]*$'}),name:Type.Optional(Type.String({minLength:1,maxLength:255})),description:Type.Optional(Type.String({maxLength:10000})),privacy:Type.Optional(Type.Union(['private','link','friends','public'].map(x=>Type.Literal(x)))),apply:Type.Optional(Type.Boolean({default:false})),expect_user:Type.Optional(Type.String({minLength:1})),expect_updated_at:Type.Optional(Type.String({minLength:1}))})},
@@ -619,7 +623,7 @@ export default definePluginEntry({
 						}));
 					}
 					const localComparison = tool.command === 'backup' && (tool.subcommand === 'compare' || tool.subcommand === 'plan-restore' || tool.subcommand === 'plan-collection');
-					const listPreview = tool.command === 'lists' && ['create', 'add', 'remove', 'notes', 'reorder', 'update'].includes(tool.subcommand ?? '') && params.apply !== true;
+					const listPreview = tool.command === 'lists' && ['create', 'add', 'remove', 'notes', 'reorder', 'update', 'copy', 'move'].includes(tool.subcommand ?? '') && params.apply !== true;
 					const preferencePreview = ['ratings', 'favorites'].includes(tool.command) && ['set', 'add', 'remove'].includes(tool.subcommand ?? '') && params.apply !== true;
 					const historyEventPreview = tool.command === 'history' && tool.subcommand === 'remove-event' && params.apply !== true;
 					const restorePreview = tool.command === 'backup' && ['restore-ratings', 'restore-favorites', 'restore-collections'].includes(tool.subcommand ?? '') && params.apply !== true;
@@ -732,7 +736,7 @@ export default definePluginEntry({
 						if (ratingRestoreOperation) return toolResult(JSON.stringify({ success: false, error: errorOutput, operation: ratingRestoreOperation }, null, 2));
 						// The CLI exits nonzero for partial writes, but stdout retains
 						// structured outcome/counts so callers can inspect before retrying.
-						const listWrite = tool.command === 'lists' && ['create', 'add', 'remove', 'notes', 'reorder', 'update'].includes(tool.subcommand ?? '');
+						const listWrite = tool.command === 'lists' && ['create', 'add', 'remove', 'notes', 'reorder', 'update', 'copy', 'move'].includes(tool.subcommand ?? '');
 						const preferenceWrite = ['ratings', 'favorites'].includes(tool.command) && ['set', 'add', 'remove'].includes(tool.subcommand ?? '');
 						if ((listWrite || preferenceWrite) && params.apply === true && error && typeof error === 'object' && 'stdout' in error) {
 							try {

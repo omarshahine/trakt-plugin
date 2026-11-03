@@ -9,7 +9,7 @@ import (
 )
 
 func addListMutationCommands(parent *cobra.Command) {
-	parent.AddCommand(newListUpdateCmd())
+	parent.AddCommand(newListUpdateCmd(), newListTransferCmd("copy"), newListTransferCmd("move"))
 	for _, action := range []string{"create", "add", "remove", "notes", "reorder"} {
 		action := action
 		cmd := &cobra.Command{Use: action, Short: "Preview custom-list " + action + "; --apply explicitly writes to Trakt", Args: cobra.NoArgs, SilenceUsage: true}

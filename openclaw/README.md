@@ -324,3 +324,10 @@ ID required; omitted fields are preserved, explicitly empty description clears.
 Apply requires expect_user; optional expect_updated_at rejects stale revisions.
 Readback verifies metadata and list contents/order. See
 [contract and live acceptance](../docs/list-metadata-update.md).
+
+### List transfers
+
+`trakt_list_copy` and `trakt_list_move` preview selected memberships offline.
+Explicit apply/expect_user required; moves verify destination before removal.
+Membership-only: notes/dates/new ranks are not copied, and note-bearing moves
+refuse. See [verification and partial-state contract](../docs/list-transfers.md).

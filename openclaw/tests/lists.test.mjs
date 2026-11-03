@@ -328,3 +328,10 @@ test('uncertain list metadata updates retain structured result and are not repla
  const t=tools.find(x=>x.name==='trakt_list_update');const n=calls.length;mutationFailure=Object.assign(new Error('synthetic readback failure'),{stdout:JSON.stringify({action:'update',outcome:'unknown',attempted:true,verified:false}),stderr:'readback failed'});
  try{const r=JSON.parse((await t.execute('uncertain',{list:'55',name:'new',apply:true,expect_user:'sample'})).content[0].text);assert.equal(r.operation.attempted,true);assert.equal(r.operation.verified,false);assert.equal(calls.length,n+1);}finally{mutationFailure=undefined;}
 });
+
+test('copy/move preview offline and retain partial transfer stage without replay',async()=>{
+ for(const action of ['copy','move']){const t=tools.find(x=>x.name===`trakt_list_${action}`);const params={source:'11',destination:'22',type:'movie',ids:['55']};authConfigured=false;try{await t.execute('preview',params);assert.deepEqual(calls.at(-1).args,['lists',action,'--source','11','--destination','22','--type','movie','--ids','55','--json']);}finally{authConfigured=true;}
+ const n=calls.length;mutationFailure=Object.assign(new Error('synthetic uncertain transfer'),{stdout:JSON.stringify({action,outcome:'partial',add_attempted:true,remove_attempted:false,stage:'destination_readback'}),stderr:'readback failed'});
+ try{const r=JSON.parse((await t.execute('partial',{...params,apply:true,expect_user:'sample'})).content[0].text);assert.equal(r.operation.remove_attempted,false);assert.equal(r.operation.stage,'destination_readback');assert.equal(calls.length,n+1);}finally{mutationFailure=undefined;}
+ }
+});

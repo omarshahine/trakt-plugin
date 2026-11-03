@@ -74,6 +74,8 @@
         "trakt_list_items",
         "trakt_list_create",
       "trakt_list_update",
+      "trakt_list_copy",
+      "trakt_list_move",
         "trakt_list_add",
         "trakt_list_remove",
         "trakt_list_notes",

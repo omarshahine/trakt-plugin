@@ -180,6 +180,17 @@ fields and all four raw list-item objects/order/notes matched baseline afterward
 only updated_at advanced. Credential bytes unchanged. No public/friends live
 transition or production-account fallback, and no installation/release.
 
+## List copy/move
+
+Implemented locally in CLI and two tools; see [list-transfers.md](list-transfers.md).
+Nine actual plugin cases on two NEW private test lists covered movie/show/season/
+episode memberships, repeat/no-op and existing-destination moves. Independent
+readback verified source intact for copy and preserved destination records. Both
+temporary lists were cleaned; original list metadata/items and credential bytes
+unchanged. No production writes or deployment. Notes/timestamps/new ranks are not
+copied, and source note-bearing moves refuse before writes. Partial/race guards
+are synthetic-tested; no atomic cross-list transaction is claimed.
+
 ## Next steps
 
 1. Submit/review the empty-statistics fix and the pending restore-planner,
