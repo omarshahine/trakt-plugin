@@ -301,3 +301,10 @@ test('discovery tools are registered, bounded and read-only with closed schemas'
  }
  const rec=tools.find(t=>t.name==='trakt_discover_recommendations');const count=calls.length;await rec.execute('invalid',{page:2});assert.equal(calls.length,count);
 });
+
+test('discovery exclusion flags and shortlist preview forward literally; no apply mode',async()=>{
+ const t=tools.find(x=>x.name==='trakt_discover_popular');
+ await t.execute('filtered',{type:'show',exclude_watched:true,exclude_watchlisted:true,exclude_ids:['55','9007199254740993'],shortlist:'synthetic;list'});
+ assert.deepEqual(calls.at(-1).args,['discover','popular','--type','show','--exclude-watched','--exclude-watchlisted','--exclude-ids','55,9007199254740993','--shortlist','synthetic;list','--json']);
+ const n=calls.length;await t.execute('bad',{exclude_ids:['../settings']});assert.equal(calls.length,n);
+});

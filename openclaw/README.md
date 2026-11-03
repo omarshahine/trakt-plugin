@@ -307,3 +307,5 @@ Missing-only collection restore executor: `trakt_backup_restore_collections` —
 with full returned metadata and exact string media IDs. Related requires `id`;
 recommendations belong to the configured login and may be empty. No watched
 filter or list writes implied. See [scope and acceptance](../docs/discovery.md).
+
+Discovery optionally supports `exclude_watched`, `exclude_watchlisted`, `exclude_ids` and `shortlist` (preview only). See [filter semantics](../docs/discovery.md) and [maintained-fork deployment path](../docs/maintained-fork.md).

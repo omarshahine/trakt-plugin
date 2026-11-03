@@ -5,14 +5,19 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 )
 
 type DiscoveryOptions struct {
-	Mode  string
-	Type  string
-	ID    string
-	Page  int
-	Limit int
+	Mode               string
+	Type               string
+	ID                 string
+	Page               int
+	Limit              int
+	ExcludeWatched     bool
+	ExcludeWatchlisted bool
+	ExcludeIDs         []string
+	Shortlist          string
 }
 type DiscoveryItem struct {
 	Type     string          `json:"type"`
@@ -27,11 +32,33 @@ type DiscoveryResult struct {
 	Type  string          `json:"type"`
 	Items []DiscoveryItem `json:"items"`
 	Pagination
-	PaginationAvailable bool `json:"pagination_available"`
-	WatchedFiltered     bool `json:"watched_filtered"`
+	PaginationAvailable bool               `json:"pagination_available"`
+	WatchedFiltered     bool               `json:"watched_filtered"`
+	WatchlistFiltered   bool               `json:"watchlist_filtered"`
+	SourceCount         int                `json:"source_count"`
+	DuplicatesRemoved   int                `json:"duplicates_removed"`
+	ExcludedWatched     int                `json:"excluded_watched"`
+	ExcludedWatchlisted int                `json:"excluded_watchlisted"`
+	ExcludedIDs         int                `json:"excluded_ids"`
+	FilterAccount       string             `json:"filter_account,omitempty"`
+	WatchedRule         string             `json:"watched_rule,omitempty"`
+	Shortlist           *ListChangePreview `json:"shortlist,omitempty"`
+	ShortlistEmpty      bool               `json:"shortlist_empty,omitempty"`
 }
 
 func ValidateDiscovery(o DiscoveryOptions) error {
+	if len(o.ExcludeIDs) > 10000 {
+		return fmt.Errorf("at most 10000 previously seen IDs")
+	}
+	for _, id := range o.ExcludeIDs {
+		if _, err := listID(id); err != nil {
+			return err
+		}
+	}
+	if o.Shortlist != "" && strings.TrimSpace(o.Shortlist) == "" {
+		return fmt.Errorf("shortlist must be a nonempty list ID or slug")
+	}
+
 	if o.Type != "movie" && o.Type != "show" {
 		return fmt.Errorf("type must be movie or show")
 	}
@@ -56,12 +83,26 @@ func ValidateDiscovery(o DiscoveryOptions) error {
 	return nil
 }
 
-// Discover reads one response in service ranking order. It does not exclude
-// watched titles or invent an explanation of a personalized recommendation.
+// Discover reads one ranked response. Optional exclusions require complete,
+// activity-bounded account reads. It never applies a shortlist mutation.
 func (c *APIClient) Discover(o DiscoveryOptions) (DiscoveryResult, error) {
 	result := DiscoveryResult{Mode: o.Mode, Type: o.Type, Items: []DiscoveryItem{}}
 	if err := ValidateDiscovery(o); err != nil {
 		return result, err
+	}
+	watched, watchlisted, owner, err := c.discoveryExclusions(o)
+	if err != nil {
+		return result, fmt.Errorf("discovery exclusions unavailable; no partially filtered results: %w", err)
+	}
+	result.WatchedFiltered = o.ExcludeWatched
+	result.WatchlistFiltered = o.ExcludeWatchlisted
+	result.FilterAccount = owner
+	if o.ExcludeWatched {
+		result.WatchedRule = "movies: any history play; shows: any episode history"
+	}
+	excluded := map[string]bool{}
+	for _, id := range o.ExcludeIDs {
+		excluded[id] = true
 	}
 	bucket := o.Type + "s"
 	path := "/" + bucket + "/" + o.Mode
@@ -91,6 +132,7 @@ func (c *APIClient) Discover(o DiscoveryOptions) (DiscoveryResult, error) {
 	if json.Unmarshal(data, &rows) != nil || rows == nil {
 		return result, fmt.Errorf("discovery response must be an array, not null")
 	}
+	result.SourceCount = len(rows)
 	seen := map[string]bool{}
 	for _, raw := range rows {
 		media := raw
@@ -122,12 +164,40 @@ func (c *APIClient) Discover(o DiscoveryOptions) (DiscoveryResult, error) {
 			return result, fmt.Errorf("invalid discovery media ID")
 		}
 		if seen[id] {
-			return result, fmt.Errorf("duplicate discovery media ID")
+			result.DuplicatesRemoved++
+			continue
 		}
 		seen[id] = true
+		if watched[id] {
+			result.ExcludedWatched++
+			continue
+		}
+		if watchlisted[id] {
+			result.ExcludedWatchlisted++
+			continue
+		}
+		if excluded[id] {
+			result.ExcludedIDs++
+			continue
+		}
 		result.Items = append(result.Items, DiscoveryItem{Type: o.Type, TraktID: id, Title: title.Title, Year: title.Year, Watchers: watchers, Media: media})
 	}
 	result.Pagination = Pagination{Page: response.Header.Get("X-Pagination-Page"), PageCount: response.Header.Get("X-Pagination-Page-Count"), Limit: response.Header.Get("X-Pagination-Limit"), ItemCount: response.Header.Get("X-Pagination-Item-Count")}
 	result.PaginationAvailable = result.Page != "" && result.PageCount != "" && result.Pagination.Limit != "" && result.ItemCount != ""
+	if o.Shortlist != "" {
+		if len(result.Items) == 0 {
+			result.ShortlistEmpty = true
+		} else {
+			ids := []string{}
+			for _, item := range result.Items {
+				ids = append(ids, item.TraktID)
+			}
+			preview, err := PreviewListChange("me", ListChange{Action: "add", List: o.Shortlist, Type: o.Type, IDs: ids})
+			if err != nil {
+				return result, err
+			}
+			result.Shortlist = &preview
+		}
+	}
 	return result, nil
 }

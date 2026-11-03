@@ -80,7 +80,7 @@ func TestDiscoveryEmptyMalformedAndFailuresNoReplay(t *testing.T) {
 		body   string
 		status int
 		ok     bool
-	}{{"[]", 200, true}, {"null", 200, false}, {"{}", 200, false}, {`[{"title":"missing id"}]`, 200, false}, {`[{"title":"wrong id","ids":{"trakt":1.5}}]`, 200, false}, {`[{"title":"a","ids":{"trakt":55}},{"title":"b","ids":{"trakt":55}}]`, 200, false}, {"SYNTHETIC-PRIVATE-ERROR", 401, false}, {"SYNTHETIC-PRIVATE-ERROR", 403, false}, {"SYNTHETIC-PRIVATE-ERROR", 429, false}} {
+	}{{"[]", 200, true}, {"null", 200, false}, {"{}", 200, false}, {`[{"title":"missing id"}]`, 200, false}, {`[{"title":"wrong id","ids":{"trakt":1.5}}]`, 200, false}, {`[{"title":"a","ids":{"trakt":55}},{"title":"b","ids":{"trakt":55}}]`, 200, true}, {"SYNTHETIC-PRIVATE-ERROR", 401, false}, {"SYNTHETIC-PRIVATE-ERROR", 403, false}, {"SYNTHETIC-PRIVATE-ERROR", 429, false}} {
 		calls := 0
 		c := mutationClient(t, func(w http.ResponseWriter, r *http.Request) {
 			calls++

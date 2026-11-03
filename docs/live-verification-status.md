@@ -154,8 +154,13 @@ The discovery CLI and four plugin tools are implemented locally; see
 four modes for movie/show and popular page two for each type. Trending, popular
 and related returned titles; recommendations returned empty arrays on the sparse
 test account. A populated real recommendation response remains unverified.
-Credential bytes were unchanged; no account writes occurred. Watched-title
-filtering and shortlist writes are not part of these discovery calls.
+Credential bytes were unchanged; no account writes occurred. Optional complete-history/watchlist exclusion, seen-ID deduplication and
+shortlist previews are now implemented. Actual seeded movie/episode tests proved
+exclusion and parent-show behavior, and a separate explicitly applied existing
+list tool added/read back/removed a selected discovered title. All temporary
+history/watchlist entries were removed; original list items/history/watchlist,
+ratings/favorites and credential bytes were unchanged. Container updated_at
+advanced as expected. Discovery itself never applies list writes.
 
 ## Next steps
 

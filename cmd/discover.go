@@ -13,12 +13,20 @@ func newDiscoverCmd() *cobra.Command {
 	c.Flags().String("id", "", "Exact Trakt media ID; required only for related")
 	c.Flags().Int("page", 1, "Page number (recommendations supports page 1 only)")
 	c.Flags().Int("limit", 10, "Maximum requested results (1-100)")
+	c.Flags().Bool("exclude-watched", false, "Exclude any history play; one episode excludes its show")
+	c.Flags().Bool("exclude-watchlisted", false, "Exclude watchlisted movies/shows, including parent shows of episode/season entries")
+	c.Flags().StringSlice("exclude-ids", nil, "Previously seen IDs for this media type; comma-separated")
+	c.Flags().String("shortlist", "", "Prepare an offline list-add preview for remaining results; never applies")
 	c.RunE = func(cmd *cobra.Command, args []string) error {
 		kind, _ := cmd.Flags().GetString("type")
 		id, _ := cmd.Flags().GetString("id")
 		page, _ := cmd.Flags().GetInt("page")
 		limit, _ := cmd.Flags().GetInt("limit")
-		o := api.DiscoveryOptions{Mode: args[0], Type: kind, ID: id, Page: page, Limit: limit}
+		watched, _ := cmd.Flags().GetBool("exclude-watched")
+		watchlisted, _ := cmd.Flags().GetBool("exclude-watchlisted")
+		ids, _ := cmd.Flags().GetStringSlice("exclude-ids")
+		shortlist, _ := cmd.Flags().GetString("shortlist")
+		o := api.DiscoveryOptions{ExcludeWatched: watched, ExcludeWatchlisted: watchlisted, ExcludeIDs: ids, Shortlist: shortlist, Mode: args[0], Type: kind, ID: id, Page: page, Limit: limit}
 		if err := api.ValidateDiscovery(o); err != nil {
 			return err
 		}
@@ -36,6 +44,11 @@ func newDiscoverCmd() *cobra.Command {
 				year = fmt.Sprint(*item.Year)
 			}
 			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "%s (%s) [%s %s]\n", item.Title, year, item.Type, item.TraktID); err != nil {
+				return err
+			}
+		}
+		if r.Shortlist != nil {
+			if err := json.NewEncoder(cmd.OutOrStdout()).Encode(r.Shortlist); err != nil {
 				return err
 			}
 		}
