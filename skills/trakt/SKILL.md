@@ -12,6 +12,8 @@ View watch history, watchlist, progress, search, and mark items as watched on Tr
 
 All commands support `--json` for machine-readable output. **Always use `--json` for data processing.**
 
+For initial authentication requested by the user, run `trakt-cli auth --json` and immediately show its verification URL and user code. Retain the opaque session handle, wait at least the returned interval, and poll once with `trakt-cli auth --json --session SESSION_FROM_START`, replacing the placeholder with that handle. Continue only while pending and before expiry. Only `authenticated` confirms a successful credential save. Keep custom client credentials in the child environment, never command arguments. On Windows, ask the user to complete the interactive `trakt-cli auth` locally because private machine sessions are not supported there.
+
 ## Commands
 
 ### Progress (In-Progress Shows)

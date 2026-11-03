@@ -51,7 +51,11 @@ Please go to https://trakt.tv/activate and enter the following code: XXXXXXXX
 Successfully authenticated, creds written to ~/.trakt.yaml
 ```
 
-The CLI ships with built-in OAuth credentials. To use your own Trakt API app instead, pass `--client-id` and `--client-secret` flags, or set `TRAKT_CLIENT_ID` and `TRAKT_CLIENT_SECRET` environment variables.
+The CLI ships with built-in OAuth credentials. To use your own Trakt API app, set `TRAKT_CLIENT_ID` and `TRAKT_CLIENT_SECRET` in the child process environment. The existing flags remain supported for interactive use; environment variables keep secrets out of command-line arguments.
+
+For tools and scripts, `trakt-cli auth --json` returns verification instructions immediately. Show the returned `verification_url` and `user_code` to the user, retain the opaque `session`, and wait at least `interval` seconds before calling `trakt-cli auth --json --session SESSION_FROM_START`. Replace `SESSION_FROM_START` with the returned handle. Each poll makes at most one token request; a `pending` response includes the next interval, and `authenticated` means credentials were saved successfully.
+
+Pending sessions expire and are stored in the owner-private `~/.config/trakt-cli/auth-sessions/` directory. Device codes, client secrets and tokens are never part of the JSON response. Machine sessions require private POSIX storage; Windows users should run the interactive `trakt-cli auth` command locally. The CLI rejects symlinked or non-file credential destinations and reports persistence failures instead of claiming success.
 
 ## Commands
 

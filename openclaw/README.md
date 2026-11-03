@@ -36,8 +36,24 @@ Or set `TRAKT_CLI_PATH` environment variable, or configure `cliPath` in plugin s
 | `trakt_history_add` | Mark movies/shows as watched |
 | `trakt_watchlist` | View watchlist |
 | `trakt_progress` | Show watch progress for TV shows |
-| `trakt_auth` | Set up Trakt.tv authentication |
+| `trakt_auth` | Start device authorization, then poll its session after approval |
 | `trakt_sync` | Opt-in: import from streaming services (only when `syncEnabled`) |
+
+## Authentication
+
+Use `trakt_auth` with `{ "action": "start" }` (or no parameters). Show the
+returned `verification_url` and `user_code` immediately. After the user approves,
+call it with `{ "action": "poll", "session": "<returned session>" }`, waiting at
+least the returned `interval` between pending responses. Stop when the status is
+`authenticated`, the session expires, or an error is returned. Keep the session
+handle within this authorization flow.
+
+This requires a matching `trakt-cli` with the `auth --session` option. The plugin
+checks that capability before starting authentication. On POSIX systems, update
+an older CLI or run `trakt-cli auth` locally for interactive setup. On Windows,
+complete initial authentication with `trakt-cli auth` locally; nonblocking private
+sessions are currently supported on POSIX systems. Configured client credentials
+are passed in a separate child environment rather than command-line arguments.
 
 ## License
 

@@ -7,6 +7,7 @@
 
 import { definePluginEntry } from 'openclaw/plugin-sdk/plugin-entry';
 import { Type } from '@sinclair/typebox';
+import { Value } from '@sinclair/typebox/value';
 import { existsSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
@@ -199,8 +200,11 @@ const TOOLS: ToolDef[] = [
 		name: 'trakt_auth',
 		command: 'auth',
 		description:
-			'Set up Trakt.tv authentication. Initiates OAuth device flow using configured client credentials. Only needed for initial setup.',
-		parameters: Type.Object({}),
+			'Set up Trakt.tv authentication without waiting for approval. Start returns verification_url, user_code, session, expiry and polling interval. Show the instructions immediately, then poll that session no faster than the returned interval after the user approves.',
+		parameters: Type.Object({
+			action: Type.Optional(Type.Union([Type.Literal('start'), Type.Literal('poll')])),
+			session: Type.Optional(Type.String({ pattern: '^[0-9a-f]{32}$' })),
+		}),
 	},
 ];
 
@@ -243,76 +247,133 @@ function isAuthConfigured(): boolean {
 	return existsSync(join(homedir(), '.trakt.yaml'));
 }
 
-/**
- * Build CLI arguments from tool parameters.
- * Always appends --json for machine-readable output.
- */
+/** Keep the tool handler and advertised schema aligned on every invocation path. */
+function closedParameters(tool: ToolDef): ToolDef['parameters'] {
+	return Type.Object(tool.parameters.properties, { additionalProperties: false });
+}
+
+function validParameters(schema: ToolDef['parameters'], params: unknown): params is Record<string, unknown> {
+	try {
+		return Value.Check(schema, params);
+	} catch {
+		return false;
+	}
+}
+
+function validAuthParameters(params: Record<string, unknown>): boolean {
+	const action = params.action ?? 'start';
+	return action === 'poll' ? typeof params.session === 'string' : params.session === undefined;
+}
+
+/** Options precede --, so positional values cannot select CLI flags. */
 function buildCliArgs(
 	command: string,
 	subcommand: string | undefined,
-	params: Record<string, unknown>,
-	config?: PluginConfig
+	params: Record<string, unknown>
 ): string[] {
-	const args: string[] = [command];
-
+	const args = [command];
 	if (command === 'auth') {
-		if (config?.clientId) args.push('--client-id', config.clientId);
-		if (config?.clientSecret) args.push('--client-secret', config.clientSecret);
+		args.push('--json');
+		if (params.action === 'poll') args.push('--session', params.session as string);
 		return args;
 	}
-
 	if (subcommand) args.push(subcommand);
 
-	if (command === 'search') {
-		if (params.query) args.push(String(params.query));
-	}
+	const positionals: string[] = [];
+	if (command === 'search') positionals.push(params.query as string);
+	if (Array.isArray(params.titles)) positionals.push(...(params.titles as string[]));
 
-	if (command === 'history' && subcommand === 'add') {
-		const titles = params.titles as string[] | undefined;
-		if (titles) {
-			if (params.type) args.push('--type', String(params.type));
-			if (params.watched_at) args.push('--watched-at', String(params.watched_at));
-			for (const title of titles) {
-				args.push(title);
-			}
-			args.push('--json');
-			return args;
-		}
-	}
-
-	// Title-array commands (watchlist add/remove, history remove) all share
-	// the same shape: search by title, POST the matches. Only `history add`
-	// needs special handling for --watched-at.
-	const titleArrayCommands: Array<[string, string]> = [
-		['watchlist', 'add'],
-		['watchlist', 'remove'],
-		['history', 'remove'],
-	];
-	if (titleArrayCommands.some(([c, s]) => c === command && s === subcommand)) {
-		const titles = params.titles as string[] | undefined;
-		if (titles) {
-			if (params.type) args.push('--type', String(params.type));
-			for (const title of titles) {
-				args.push(title);
-			}
-			args.push('--json');
-			return args;
-		}
-	}
-
-	const skipKeys = new Set(['query', 'titles']);
 	for (const [key, value] of Object.entries(params)) {
-		if (skipKeys.has(key) || value === undefined || value === null || value === false) continue;
+		if (key === 'query' || key === 'titles' || value === undefined || value === false) continue;
 		const flag = `--${key.replace(/_/g, '-')}`;
-		if (typeof value === 'boolean') {
-			args.push(flag);
-		} else {
-			args.push(flag, String(value));
-		}
+		if (value === true) args.push(flag);
+		else args.push(flag, String(value));
 	}
-
 	args.push('--json');
+	if (positionals.length) args.push('--', ...positionals);
 	return args;
+}
+
+/** Create a separate environment per call; never mutate process.env. */
+function authEnvironment(config?: PluginConfig): NodeJS.ProcessEnv {
+	return {
+		...process.env,
+		...(config?.clientId ? { TRAKT_CLIENT_ID: config.clientId } : {}),
+		...(config?.clientSecret ? { TRAKT_CLIENT_SECRET: config.clientSecret } : {}),
+	};
+}
+
+/** Old CLIs ignore --json during auth and would wait before returning a code. */
+async function supportsAuthSessions(cliPath: string): Promise<boolean> {
+	const env: NodeJS.ProcessEnv = {};
+	for (const key of ['PATH', 'SystemRoot', 'WINDIR', 'ComSpec']) {
+		if (process.env[key] !== undefined) env[key] = process.env[key];
+	}
+	try {
+		const { stdout } = await runCli(cliPath, ['auth', '--help'], {
+			timeout: 5_000,
+			maxBuffer: 256 * 1024,
+			env,
+		});
+		return /^\s+--session(?:\s|=)/m.test(stdout);
+	} catch {
+		return false;
+	}
+}
+
+const AUTH_RESPONSE = Type.Object({
+	success: Type.Literal(true),
+	status: Type.Union([Type.Literal('pending'), Type.Literal('authenticated')]),
+	session: Type.Optional(Type.String({ pattern: '^[0-9a-f]{32}$' })),
+	verification_url: Type.Optional(Type.String({ minLength: 1, maxLength: 2048 })),
+	user_code: Type.Optional(Type.String({ pattern: '^[A-Za-z0-9-]{1,128}$' })),
+	expires_in: Type.Optional(Type.Integer({ minimum: 0 })),
+	interval: Type.Optional(Type.Integer({ minimum: 1 })),
+}, { additionalProperties: false });
+
+const AUTH_VERIFICATION_ORIGINS = new Set([
+	'https://trakt.tv', 'https://www.trakt.tv',
+	'https://trakt.tv:443', 'https://www.trakt.tv:443',
+]);
+
+/** Accept only Trakt's public verification destination and literal code data. */
+function validVerificationURL(value: string, clientSecret?: string): boolean {
+	const pathStart = value.indexOf('/', 'https://'.length);
+	const origin = pathStart === -1 ? value : value.slice(0, pathStart);
+	if (!AUTH_VERIFICATION_ORIGINS.has(origin) || value.includes('?') || value.includes('#') ||
+		[...value].some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) return false;
+	const url = new URL(value);
+	if (url.protocol !== 'https:' || url.username || url.password ||
+		(url.hostname !== 'trakt.tv' && url.hostname !== 'www.trakt.tv') ||
+		(url.port !== '' && url.port !== '443')) return false;
+	// Match the CLI's decoded-path reflection check, not only raw JSON text.
+	return !clientSecret || !decodeURIComponent(url.pathname).includes(clientSecret);
+}
+
+/** Return only the public device-flow protocol, never arbitrary auth stdout. */
+function parseAuthResponse(stdout: string, params: Record<string, unknown>, clientSecret?: string): unknown {
+	const result: unknown = JSON.parse(stdout);
+	if (!Value.Check(AUTH_RESPONSE, result)) throw new Error('Invalid auth response');
+	if (clientSecret && Object.values(result).some(value => typeof value === 'string' && value.includes(clientSecret))) {
+		throw new Error('Invalid auth response');
+	}
+	const action = params.action ?? 'start';
+	if (result.status === 'authenticated') {
+		if (action !== 'poll' || Object.keys(result).some(key => key !== 'success' && key !== 'status')) {
+			throw new Error('Invalid auth response');
+		}
+		return result;
+	}
+	if (!result.session || result.expires_in === undefined || result.interval === undefined) {
+		throw new Error('Invalid auth response');
+	}
+	if (action === 'start') {
+		if (!result.verification_url || !result.user_code) throw new Error('Invalid auth response');
+		if (!validVerificationURL(result.verification_url, clientSecret)) throw new Error('Invalid auth response');
+	} else if (result.session !== params.session || result.verification_url !== undefined || result.user_code !== undefined) {
+		throw new Error('Invalid auth response');
+	}
+	return result;
 }
 
 export default definePluginEntry({
@@ -336,7 +397,7 @@ export default definePluginEntry({
 					name: tool.name,
 					label: tool.name,
 					description: tool.description,
-					parameters: tool.parameters,
+					parameters: closedParameters(tool),
 					async execute() {
 						return toolResult(
 							JSON.stringify({ success: false, error: errorMessage }, null, 2)
@@ -348,20 +409,30 @@ export default definePluginEntry({
 		}
 
 		for (const tool of tools) {
+			const parameters = closedParameters(tool);
 			api.registerTool({
 				name: tool.name,
 				label: tool.name,
 				description: tool.description,
-				parameters: tool.parameters,
+				parameters,
 
 				async execute(_id: string, params: Record<string, unknown>) {
+					if (!validParameters(parameters, params) || (tool.command === 'auth' && !validAuthParameters(params))) {
+						return toolResult(JSON.stringify({ success: false, error: 'Invalid parameters for this Trakt tool.' }));
+					}
+					if (tool.command === 'auth' && !await supportsAuthSessions(cliPath)) {
+						return toolResult(JSON.stringify({
+							success: false,
+							error: 'This trakt-cli does not support nonblocking authentication. Update trakt-cli, or run trakt-cli auth locally.',
+						}));
+					}
 					if (tool.command !== 'auth' && !isAuthConfigured()) {
 						return toolResult(
 							JSON.stringify(
 								{
 									success: false,
 									error:
-										'Trakt auth not configured. Run trakt_auth first, or manually: trakt-cli auth --client-id X --client-secret Y',
+										'Trakt auth not configured. Start trakt_auth, show its verification instructions, then poll its session. Or run trakt-cli auth locally.',
 								},
 								null,
 								2
@@ -370,7 +441,8 @@ export default definePluginEntry({
 					}
 
 					try {
-						const args = buildCliArgs(tool.command, tool.subcommand, params, config);
+						const args = buildCliArgs(tool.command, tool.subcommand, params);
+						const env = tool.command === 'auth' ? authEnvironment(config) : undefined;
 						// 30s was too tight for `progress`, which iterates ~50 API calls
 						// (watchlist + watched + N× GetShowProgress) and empirically runs
 						// 35-45s for users with substantial watch history. 120s gives
@@ -382,7 +454,12 @@ export default definePluginEntry({
 							// sync walks several services plus per-show history lookups.
 							timeout: tool.command === 'sync' ? 600_000 : 120_000,
 							maxBuffer: 4 * 1024 * 1024,
+							env,
 						});
+
+						if (tool.command === 'auth') {
+							return toolResult(JSON.stringify(parseAuthResponse(stdout, params, env?.TRAKT_CLIENT_SECRET), null, 2));
+						}
 
 						let result: unknown;
 						try {
@@ -393,9 +470,8 @@ export default definePluginEntry({
 
 						return toolResult(JSON.stringify(result, null, 2));
 					} catch (error: unknown) {
-						// execFile errors include the full command line, which can
-						// contain --client-secret. CLI stderr can echo credentials too.
-						// Never return raw authentication diagnostics to an agent.
+						// Authentication diagnostics can contain provider credentials.
+						// Never inspect or return raw authentication failures to an agent.
 						if (tool.command === 'auth') {
 							return toolResult(JSON.stringify({
 								success: false,
