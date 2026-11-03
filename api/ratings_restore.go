@@ -8,15 +8,10 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 )
 
-type RatingRestoreAccount struct {
-	Slug string `json:"slug"`
-	UUID string `json:"uuid"`
-}
 type RestoreRating struct {
 	Type    string `json:"type"`
 	TraktID string `json:"trakt_id"`
@@ -87,20 +82,8 @@ func (c *APIClient) ApplyMissingRatings(expected string, account RatingRestoreAc
 		}
 	}
 	sort.Strings(types)
-	settings, err := c.GetBackupDocument("me", "user/settings")
-	if err != nil {
+	if _, err := c.verifyRestoreAccount(expected, account); err != nil {
 		return r, err
-	}
-	var identity struct {
-		User struct {
-			IDs struct {
-				Slug string `json:"slug"`
-				UUID string `json:"uuid"`
-			} `json:"ids"`
-		} `json:"user"`
-	}
-	if json.Unmarshal(settings, &identity) != nil || identity.User.IDs.Slug != expected || identity.User.IDs.UUID != account.UUID {
-		return r, fmt.Errorf("live account slug/UUID do not match the reviewed archives; no write attempted")
 	}
 	r.Account = expected
 	if len(items) == 0 {
@@ -196,38 +179,6 @@ func (c *APIClient) ApplyMissingRatings(expected string, account RatingRestoreAc
 	return r, nil
 }
 
-func ratingRestoreAcknowledged(data []byte, want map[string]int) bool {
-	var ack struct {
-		Added    map[string]int               `json:"added"`
-		Updated  map[string]int               `json:"updated"`
-		NotFound map[string][]json.RawMessage `json:"not_found"`
-	}
-	if json.Unmarshal(data, &ack) != nil || ack.Added == nil || ack.NotFound == nil {
-		return false
-	}
-	for key, count := range want {
-		if ack.Added[key] != count {
-			return false
-		}
-	}
-	for key, count := range ack.Added {
-		if count != want[key] {
-			return false
-		}
-	}
-	for _, count := range ack.Updated {
-		if count != 0 {
-			return false
-		}
-	}
-	for _, rows := range ack.NotFound {
-		if len(rows) != 0 {
-			return false
-		}
-	}
-	return true
-}
-
 func (c *APIClient) stableRestoreRatings(owner string, types []string) (map[string]RestoreRating, error) {
 	start, err := c.GetBackupActivity()
 	if err != nil {
@@ -255,62 +206,20 @@ func (c *APIClient) stableRestoreRatings(owner string, types []string) (map[stri
 
 func (c *APIClient) completeRestoreRatings(owner, kind string) (map[string]RestoreRating, error) {
 	result := map[string]RestoreRating{}
-	pages, limit, total := 0, 0, 0
 	path := "/users/" + url.PathEscape(owner) + "/ratings/" + kind + "s"
-	for page := 1; page <= 100; page++ {
-		rows, p, err := c.strictRecordPage(path, page, 1000)
+	err := c.walkStrictRecords(path, 1000, 100000, func(raw json.RawMessage) error {
+		x, err := decodeRestoreRating(raw, kind)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		nums := []int{}
-		for _, s := range []string{p.Page, p.PageCount, p.Limit, p.ItemCount} {
-			n, e := strconv.Atoi(s)
-			if e != nil {
-				return nil, fmt.Errorf("invalid rating pagination")
-			}
-			nums = append(nums, n)
+		key := ratingKey(x)
+		if _, ok := result[key]; ok {
+			return fmt.Errorf("duplicate rating media ID")
 		}
-		if page == 1 && nums[0] == 1 && nums[1] == 0 && nums[2] >= 1 && nums[2] <= 1000 && nums[3] == 0 && len(rows) == 0 {
-			return result, nil
-		}
-		if nums[0] != page || nums[1] < 1 || nums[1] > 100 || nums[2] < 1 || nums[2] > 1000 || nums[3] < 0 || nums[3] > 100000 {
-			return nil, fmt.Errorf("rating pagination exceeds safe bounds")
-		}
-		if page == 1 {
-			pages, limit, total = nums[1], nums[2], nums[3]
-		} else if pages != nums[1] || limit != nums[2] || total != nums[3] {
-			return nil, fmt.Errorf("rating pagination changed")
-		}
-		wantPages := (total + limit - 1) / limit
-		if wantPages == 0 {
-			wantPages = 1
-		}
-		wantRows := limit
-		if page == pages {
-			wantRows = total - limit*(pages-1)
-		}
-		if wantPages != pages || len(rows) != wantRows {
-			return nil, fmt.Errorf("rating page count/size mismatch")
-		}
-		for _, raw := range rows {
-			x, err := decodeRestoreRating(raw, kind)
-			if err != nil {
-				return nil, err
-			}
-			key := ratingKey(x)
-			if _, ok := result[key]; ok {
-				return nil, fmt.Errorf("duplicate rating media ID")
-			}
-			result[key] = x
-		}
-		if page == pages {
-			if len(result) != total {
-				return nil, fmt.Errorf("incomplete ratings scope")
-			}
-			return result, nil
-		}
-	}
-	return nil, fmt.Errorf("rating page limit exceeded")
+		result[key] = x
+		return nil
+	})
+	return result, err
 }
 
 func decodeRestoreRating(raw json.RawMessage, kind string) (RestoreRating, error) {

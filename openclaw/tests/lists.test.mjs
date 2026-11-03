@@ -36,6 +36,21 @@ test('custom list tools are registered and declared in the manifest', () => {
 	assert.ok(!tools.some((tool) => tool.name === 'trakt_sync'));
 });
 
+test('favorites restore exposes membership-only offline review and explicit apply parameters',async()=>{
+	const tool=tools.find(t=>t.name==='trakt_backup_restore_favorites');const manifest=JSON.parse(readFileSync(new URL('../openclaw.plugin.json',import.meta.url)));assert.ok(tool && manifest.contracts.tools.includes(tool.name));assert.deepEqual(tool.parameters.required,['source','current']);
+	const params={source:'/synthetic/favorites source.zip',current:'/synthetic/favorites;current.zip',limit:2};authConfigured=false;
+	try{await tool.execute('test',params);assert.deepEqual(calls.at(-1).args,['backup','restore-favorites','--source',params.source,'--current',params.current,'--limit','2','--json']);const count=calls.length;const denied=await tool.execute('test',{...params,apply:true});assert.equal(calls.length,count);assert.equal(JSON.parse(denied.content[0].text).success,false);}finally{authConfigured=true;}
+	await tool.execute('test',{...params,review_id:'b'.repeat(64),expect_user:'synthetic',apply:true});assert.ok(calls.at(-1).args.includes('--apply'));assert.ok(!calls.at(-1).args.includes('--rank'));assert.ok(!calls.at(-1).args.includes('--notes'));
+});
+
+test('favorites restore partial and rate-limit states stay visible without mutation replay',async()=>{
+	const tool=tools.find(t=>t.name==='trakt_backup_restore_favorites');const review='b'.repeat(64);
+	for(const throttled of [false,true]){
+		const count=calls.length;mutationFailure=Object.assign(new Error('synthetic favorites failure'),{stdout:JSON.stringify({review_id:review,outcome:throttled?'unknown':'partial',attempted:true,verified:false,rows:[{type:'movie',trakt_id:'55',state:'present_verified'},{type:'show',trakt_id:'56',state:'missing'}]}),stderr:throttled?'rate limited by trakt api: 429 (path=/sync/favorites retry_after=60)':'partial membership; inspect before retry'});
+		try{const result=await tool.execute('test',{source:'/synthetic/source.zip',current:'/synthetic/current.zip',review_id:review,expect_user:'synthetic',apply:true});const parsed=JSON.parse(result.content[0].text);assert.equal(calls.length,count+1);assert.equal(parsed.operation.attempted,true);assert.equal(parsed.operation.rows[1].state,'missing');if(throttled){assert.equal(parsed.retry_after_seconds,60);assert.equal(parsed.rate_limited,true);}}finally{mutationFailure=undefined;}
+	}
+});
+
 test('ratings restore preview is offline, bounded and forwards reviewed apply parameters literally', async () => {
 	const tool=tools.find(t=>t.name==='trakt_backup_restore_ratings');
 	const manifest=JSON.parse(readFileSync(new URL('../openclaw.plugin.json',import.meta.url)));

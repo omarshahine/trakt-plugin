@@ -36,10 +36,19 @@ Or set `TRAKT_CLI_PATH` environment variable, or configure `cliPath` in plugin s
 | `trakt_history_add` | Mark movies/shows as watched |
 | `trakt_history_remove_event` | Preview or explicitly remove one dated watch by string history-event ID, with account/type/media/date guards and scoped readback |
 | `trakt_backup_restore_ratings` | Offline archive-bound review or explicit restoration of missing dated ratings, with live UUID/conflict checks and value/date readback |
+| `trakt_backup_restore_favorites` | Review or explicitly restore missing movie/show favorites membership only; ranks, notes and timestamps excluded |
 | `trakt_watchlist` | View watchlist |
 | `trakt_progress` | Show watch progress for TV shows |
 | `trakt_auth` | Set up Trakt.tv authentication |
 | `trakt_sync` | Opt-in: import from streaming services (only when `syncEnabled`) |
+
+### Reviewed favorites membership restoration
+
+For favorites membership, `trakt_backup_restore_favorites` uses offline review
+and explicit `review_id`/`expect_user`/`apply` gates. It adds only missing
+movie/show memberships, respects known account capacity, and verifies the
+expected membership union without removing prior favorites. Ranks, notes and
+timestamps are not restored. See [favorites restore scope and limits](../docs/favorites-restore.md).
 
 ### Reviewed ratings restoration
 
@@ -180,7 +189,8 @@ Missing headers on other array resources still fail rather than imply completene
 This targets the categories in a website account export, but does **not** promise
 byte-identical files, future website categories, or fields the API does not return.
 Only collaborated-list metadata is included, not contents owned by other users.
-There is no restore support. `complete` means the declared API scope passed all
+There is no general full-account restore; reviewed ratings and favorites-membership
+executors have separate, limited scopes. `complete` means the declared API scope passed all
 checks, not a guarantee of website-field parity or a transactional snapshot.
 For example, third-party API responses can omit the account email, date of birth,
 and numeric user Trakt ID even when the website export contains them. These fields

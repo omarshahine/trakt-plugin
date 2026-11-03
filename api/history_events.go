@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -172,84 +171,20 @@ func (c *APIClient) stableHistoryEvents(owner string, target HistoryEventRef) (m
 }
 
 func (c *APIClient) historyEvents(owner string, target HistoryEventRef) (map[string]HistoryEventRef, error) {
-	path := "/users/" + url.PathEscape(owner) + "/history/" + target.Type + "s/" + target.TraktID
 	result := map[string]HistoryEventRef{}
-	pages, limit, total := 0, 0, 0
-	for page := 1; page <= 100; page++ {
-		rows, p, err := c.strictRecordPage(path, page, 100)
-		if err != nil {
-			return nil, err
+	path := "/users/" + url.PathEscape(owner) + "/history/" + target.Type + "s/" + target.TraktID
+	err := c.walkStrictRecords(path, 100, 10000, func(raw json.RawMessage) error {
+		event, err := decodeHistoryEvent(raw, target.Type)
+		if err != nil || event.Type != target.Type || event.TraktID != target.TraktID {
+			return fmt.Errorf("invalid or mismatched history event in scoped read")
 		}
-		values := []int{}
-		for _, s := range []string{p.Page, p.PageCount, p.Limit, p.ItemCount} {
-			n, e := strconv.Atoi(s)
-			if e != nil {
-				return nil, fmt.Errorf("missing or invalid history pagination")
-			}
-			values = append(values, n)
+		if _, exists := result[event.HistoryID]; exists {
+			return fmt.Errorf("duplicate history event ID during pagination")
 		}
-		// Trakt returns page=1, page_count=0, item_count=0 and [] after
-		// removing the last play. Admit only that exact empty first-page case.
-		if page == 1 && values[0] == 1 && values[1] == 0 && values[2] >= 1 && values[2] <= 1000 && values[3] == 0 && len(rows) == 0 {
-			return result, nil
-		}
-		if values[0] != page || values[1] < 1 || values[1] > 100 || values[2] < 1 || values[2] > 1000 || values[3] < 0 || values[3] > 10000 {
-			return nil, fmt.Errorf("unsafe history pagination or scope exceeds 10000 events")
-		}
-		if page == 1 {
-			pages, limit, total = values[1], values[2], values[3]
-		} else if pages != values[1] || limit != values[2] || total != values[3] {
-			return nil, fmt.Errorf("history pagination changed during read")
-		}
-		wantPages := (total + limit - 1) / limit
-		if wantPages == 0 {
-			wantPages = 1
-		}
-		wantRows := limit
-		if page == pages {
-			wantRows = total - limit*(pages-1)
-		}
-		if pages != wantPages || len(rows) != wantRows {
-			return nil, fmt.Errorf("history page size/count mismatch")
-		}
-		for _, row := range rows {
-			event, err := decodeHistoryEvent(row, target.Type)
-			if err != nil || event.Type != target.Type || event.TraktID != target.TraktID {
-				return nil, fmt.Errorf("invalid or mismatched history event in scoped read")
-			}
-			if _, exists := result[event.HistoryID]; exists {
-				return nil, fmt.Errorf("duplicate history event ID during pagination")
-			}
-			result[event.HistoryID] = event
-		}
-		if page == pages {
-			if len(result) != total {
-				return nil, fmt.Errorf("incomplete history read")
-			}
-			return result, nil
-		}
-	}
-	return nil, fmt.Errorf("history page limit exceeded")
-}
-
-func (c *APIClient) strictRecordPage(path string, page, limit int) ([]json.RawMessage, Pagination, error) {
-	r, err := c.doRequest(requestParams{method: http.MethodGet, path: path, auth: true, noCache: true, pagination: PaginationsParams{Page: page, Limit: limit}})
-	if err != nil {
-		return nil, Pagination{}, err
-	}
-	defer r.Body.Close()
-	if r.StatusCode != http.StatusOK {
-		return nil, Pagination{}, fmt.Errorf("record read returned HTTP %d", r.StatusCode)
-	}
-	data, err := io.ReadAll(io.LimitReader(r.Body, (4<<20)+1))
-	if err != nil || len(data) > 4<<20 {
-		return nil, Pagination{}, fmt.Errorf("record page unreadable or too large")
-	}
-	var rows []json.RawMessage
-	if json.Unmarshal(data, &rows) != nil || rows == nil {
-		return nil, Pagination{}, fmt.Errorf("record page must be a JSON array, not null")
-	}
-	return rows, Pagination{Page: r.Header.Get("X-Pagination-Page"), Limit: r.Header.Get("X-Pagination-Limit"), PageCount: r.Header.Get("X-Pagination-Page-Count"), ItemCount: r.Header.Get("X-Pagination-Item-Count")}, nil
+		result[event.HistoryID] = event
+		return nil
+	})
+	return result, err
 }
 
 func decodeHistoryEvent(raw json.RawMessage, kind string) (HistoryEventRef, error) {

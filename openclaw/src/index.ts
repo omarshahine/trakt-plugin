@@ -79,6 +79,17 @@ function preferenceTools(): ToolDef[] {
 // Tool metadata — each maps to a CLI subcommand
 const TOOLS: ToolDef[] = [
 	{
+		name: 'trakt_backup_restore_favorites', command: 'backup', subcommand: 'restore-favorites',
+		description: 'Review or explicitly restore missing movie/show FAVORITES MEMBERSHIP only from validated source/current ZIPs. Default offline preview binds archive bytes, account UUID and batch to review_id. Apply requires explicit authorization, matching review_id and expect_user; adds missing membership and verifies existing favorites remain. Ranks, notes and timestamps are NOT restored and server-assigned order may change. Account capacity is checked when known. No removals, automatic mutation retries or rollback; inspect partial/uncertain row states.',
+		parameters: Type.Object({
+			source: Type.String({ minLength: 1 }), current: Type.String({ minLength: 1 }),
+			limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100, default: 100 })),
+			apply: Type.Optional(Type.Boolean({ default: false })),
+			review_id: Type.Optional(Type.String({ pattern: '^[a-f0-9]{64}$' })),
+			expect_user: Type.Optional(Type.String({ minLength: 1 })),
+		}),
+	},
+	{
 		name: 'trakt_backup_restore_ratings', command: 'backup', subcommand: 'restore-ratings',
 		description: 'Review or explicitly restore only missing dated ratings from validated local source/current ZIPs. Default offline preview binds a review_id to exact archive bytes, account UUID and batch. Apply requires explicit authorization, matching review_id and expect_user; live existing ratings are never intentionally overwritten. Values/dates and other ratings in affected scopes are read back. No atomic server insert-if-absent exists: races/updated counts are reported as partial or uncertain, never silently retried or rolled back. Does not restore history, watchlists or other categories.',
 		parameters: Type.Object({
@@ -513,8 +524,8 @@ export default definePluginEntry({
 					const listPreview = tool.command === 'lists' && ['create', 'add', 'remove', 'notes', 'reorder'].includes(tool.subcommand ?? '') && params.apply !== true;
 					const preferencePreview = ['ratings', 'favorites'].includes(tool.command) && ['set', 'add', 'remove'].includes(tool.subcommand ?? '') && params.apply !== true;
 					const historyEventPreview = tool.command === 'history' && tool.subcommand === 'remove-event' && params.apply !== true;
-					const ratingRestorePreview = tool.command === 'backup' && tool.subcommand === 'restore-ratings' && params.apply !== true;
-					if (tool.command !== 'auth' && !localComparison && !listPreview && !preferencePreview && !historyEventPreview && !ratingRestorePreview && !isAuthConfigured()) {
+					const restorePreview = tool.command === 'backup' && ['restore-ratings', 'restore-favorites'].includes(tool.subcommand ?? '') && params.apply !== true;
+					if (tool.command !== 'auth' && !localComparison && !listPreview && !preferencePreview && !historyEventPreview && !restorePreview && !isAuthConfigured()) {
 						return toolResult(
 							JSON.stringify(
 								{
@@ -569,7 +580,7 @@ export default definePluginEntry({
 						const errorOutput = stderr ? `${message}\n\nstderr: ${stderr}` : message;
 						let historyOperation: Record<string, unknown> | undefined;
 						let ratingRestoreOperation: Record<string, unknown> | undefined;
-						if (tool.command === 'backup' && tool.subcommand === 'restore-ratings' && params.apply === true && error && typeof error === 'object' && 'stdout' in error) {
+						if (tool.command === 'backup' && ['restore-ratings', 'restore-favorites'].includes(tool.subcommand ?? '') && params.apply === true && error && typeof error === 'object' && 'stdout' in error) {
 							try {
 								const operation = JSON.parse(String((error as { stdout: unknown }).stdout));
 								if (typeof params.review_id === 'string' && operation?.review_id === params.review_id && typeof operation.attempted === 'boolean' && operation.verified === false && ['not_attempted', 'unknown', 'partial'].includes(operation.outcome)) ratingRestoreOperation = operation;

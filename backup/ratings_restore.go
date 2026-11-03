@@ -1,14 +1,10 @@
 package backup
 
 import (
-	"archive/zip"
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
-	"os"
 	"strings"
 
 	"github.com/omarshahine/trakt-plugin/api"
@@ -35,31 +31,16 @@ func PreviewRatingRestore(source, current string, limit int) (RatingRestoreRevie
 	if limit < 1 || limit > 100 {
 		return r, fmt.Errorf("limit must be 1-100 ratings per reviewed batch")
 	}
-	a, sourceHash, err := readRatingRestoreArchive(source)
-	if err != nil {
-		return r, fmt.Errorf("source: %w", err)
-	}
-	b, currentHash, err := readRatingRestoreArchive(current)
-	if err != nil {
-		return r, fmt.Errorf("current: %w", err)
-	}
-	p, err := planRestoreArchives(a, b)
+	pair, err := readRestoreArchives(source, current)
 	if err != nil {
 		return r, err
 	}
-	aID, err := comparisonAccount(a)
+	p, err := planRestoreArchives(pair.source, pair.current)
 	if err != nil {
 		return r, err
 	}
-	bID, err := comparisonAccount(b)
-	if err != nil {
-		return r, err
-	}
-	if aID.uuid == "" || bID.uuid == "" || aID.uuid != bID.uuid || strings.TrimSpace(bID.slug) == "" {
-		return r, fmt.Errorf("ratings restoration requires matching UUIDs in both archives and a current account slug")
-	}
-	r.Account = api.RatingRestoreAccount{Slug: bID.slug, UUID: bID.uuid}
-	r.SourceSHA256, r.CurrentSHA256 = sourceHash, currentHash
+	r.Account = pair.account
+	r.SourceSHA256, r.CurrentSHA256 = pair.sourceHash, pair.currentHash
 	for _, issue := range append(p.Conflicts, p.Unsupported...) {
 		if strings.HasPrefix(issue.Resource, "ratings/") {
 			r.Blocked = append(r.Blocked, issue)
@@ -88,30 +69,4 @@ func PreviewRatingRestore(source, current string, limit int) (RatingRestoreRevie
 	digest := sha256.Sum256(encoded)
 	r.ReviewID = hex.EncodeToString(digest[:])
 	return r, nil
-}
-
-func readRatingRestoreArchive(filename string) (*comparisonArchive, string, error) {
-	f, err := os.Open(filename)
-	if err != nil {
-		return nil, "", fmt.Errorf("cannot open archive")
-	}
-	defer f.Close()
-	info, err := f.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() > maxCompareArchive {
-		return nil, "", fmt.Errorf("archive must be a regular file within size limit")
-	}
-	data, err := io.ReadAll(io.LimitReader(f, maxCompareArchive+1))
-	if err != nil || len(data) > maxCompareArchive {
-		return nil, "", fmt.Errorf("archive read/size failure")
-	}
-	z, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
-	if err != nil {
-		return nil, "", fmt.Errorf("cannot parse ZIP")
-	}
-	a, err := readComparisonZIP(z)
-	if err != nil {
-		return nil, "", err
-	}
-	hash := sha256.Sum256(data)
-	return a, hex.EncodeToString(hash[:]), nil
 }

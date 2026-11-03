@@ -466,7 +466,8 @@ Missing headers on other array resources still fail rather than imply completene
 This targets the categories in a website account export, but does **not** promise
 byte-identical files, future website categories, or fields the API does not return.
 Only collaborated-list metadata is included, not contents owned by other users.
-There is no restore support. `complete` means the declared API scope passed all
+There is no general full-account restore; reviewed ratings and favorites-membership
+executors have separate, limited scopes. `complete` means the declared API scope passed all
 checks, not a guarantee of website-field parity or a transactional snapshot.
 For example, third-party API responses can omit the account email, date of birth,
 and numeric user Trakt ID even when the website export contains them. These fields
@@ -511,6 +512,11 @@ For explicit execution of a reviewed missing-ratings batch, see the
 [ratings-only restore executor](docs/ratings-restore.md). It has an offline
 archive-bound review, fresh UUID/conflict checks, and value/date readback; it
 does not execute the history/watchlist candidates described below.
+
+For adding only missing movie/show favorites, see
+[favorites membership restoration](docs/favorites-restore.md). This uses the
+same archive/account review gates but intentionally excludes ranks, notes and
+timestamps; it is not a full favorites-metadata restore.
 
 ```bash
 # Offline: supply a freshly created current-account backup.

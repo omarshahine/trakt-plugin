@@ -118,6 +118,16 @@ Regression tests cover acceptance and refusal without the marker.
   consistent empty-first-page case; subsequent dedicated movie and episode
   deletions passed product readback. Null/inconsistent responses still fail.
 - The product contract and limits are in [history-event-removal.md](history-event-removal.md).
+- Favorites membership restoration is implemented locally; see
+  [favorites-restore.md](favorites-restore.md). Real isolated-account tests
+  seeded movie/show favorites, created complete native backups, removed only
+  those test memberships, restored both through the actual development plugin,
+  and verified a repeat as a no-op. A second real pass introduced one favorite
+  after preview: fresh preflight skipped it and added only the other missing
+  membership. Source/restored membership sets matched. All test additions were
+  cleaned up; the two original favorite memberships, six ratings and 11 history
+  records remained. Original archives/credentials were unchanged. Rank, note
+  and timestamp fidelity is explicitly outside this executor's scope.
 
 ## Next steps
 
