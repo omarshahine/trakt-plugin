@@ -79,7 +79,7 @@ function preferenceTools(): ToolDef[] {
 
 function discoveryParameters(mode:string){return Type.Object({genres:Type.Optional(Type.Array(Type.String({pattern:'^[a-zA-Z][a-zA-Z0-9-]{0,63}$'}),{maxItems:50})),year_min:Type.Optional(Type.Integer({minimum:1800,maximum:9999})),year_max:Type.Optional(Type.Integer({minimum:1800,maximum:9999})),runtime_min:Type.Optional(Type.Integer({minimum:1,maximum:10000})),runtime_max:Type.Optional(Type.Integer({minimum:1,maximum:10000})),min_rating:Type.Optional(Type.Number({minimum:0,maximum:10})),min_votes:Type.Optional(Type.Integer({minimum:0,maximum:9007199254740991})),exclude_watched:Type.Optional(Type.Boolean({default:false})),exclude_watchlisted:Type.Optional(Type.Boolean({default:false})),exclude_ids:Type.Optional(Type.Array(Type.String({pattern:'^[1-9][0-9]*$'}),{maxItems:10000})),shortlist:Type.Optional(Type.String({minLength:1})),type:Type.Optional(Type.Union([Type.Literal('movie'),Type.Literal('show')],{default:'show'})),limit:Type.Optional(Type.Integer({minimum:1,maximum:100,default:10})),...(mode==='related'?{id:Type.String({pattern:'^[1-9][0-9]*$'})}:{}),...(mode==='recommendations'?{}:{page:Type.Optional(Type.Integer({minimum:1,default:1}))})})}
 
-// Tool metadata â€” each maps to a CLI subcommand
+// Tool metadata — each maps to a CLI subcommand
 const TOOLS: ToolDef[] = [
  {name:'trakt_watch_tonight',command:'shortlist',description:'Build a read-only bounded multi-page movie/show shortlist. Count 1-50, max_pages 1-20, limit per page 1-100; stops at count, budget, reported end or missing pagination. Watched/watchlist exclusions default TRUE and are loaded once and activity-checked; explicit false opts out. Genre/year/runtime/rating/vote filters and cross-page dedup preserve first-seen service order. Factual-fit explanations are metadata/snapshot evidence, not inferred taste or availability. Recommendations reads one response only. Partial failures retain items and stop reason; never auto-retry rate limits. Optional shortlist prepares list-add preview ONLY; no writes or whole-catalog completeness claim.',
  parameters:Type.Object({...discoveryParameters('popular').properties,id:Type.Optional(Type.String({pattern:'^[1-9][0-9]*$'})),mode:Type.Optional(Type.Union(['popular','trending','related','recommendations'].map(x=>Type.Literal(x)),{default:'popular'})),count:Type.Optional(Type.Integer({minimum:1,maximum:50,default:5})),max_pages:Type.Optional(Type.Integer({minimum:1,maximum:20,default:5})),limit:Type.Optional(Type.Integer({minimum:1,maximum:100,default:20})),exclude_watched:Type.Optional(Type.Boolean({default:true})),exclude_watchlisted:Type.Optional(Type.Boolean({default:true}))})},
@@ -371,7 +371,7 @@ const TOOLS: ToolDef[] = [
 		name: 'trakt_calendar',
 		command: 'calendar',
 		description:
-			'Show upcoming episodes of shows you watch. Returns forward-looking airings within a date window. Use for proactive "what airs next?" workflows â€” this is the only trakt tool that returns future data.',
+			'Show upcoming episodes of shows you watch. Returns forward-looking airings within a date window. Use for proactive "what airs next?" workflows — this returns a personalized airing window; title browsing can also expose future broadcast dates.',
 		parameters: Type.Object({
 			days: Type.Optional(
 				Type.Number({ description: 'Number of days to look ahead (default 7)' })
@@ -593,7 +593,7 @@ export default definePluginEntry({
 		try {
 			cliPath = resolveCliPath(config);
 		} catch (error) {
-			// Defer error to tool execution time â€” plugin still loads
+			// Defer error to tool execution time — plugin still loads
 			const errorMessage = error instanceof Error ? error.message : String(error);
 
 			for (const tool of tools) {
@@ -653,7 +653,7 @@ export default definePluginEntry({
 						const args = buildCliArgs(tool.command, tool.subcommand, params);
 						const env = tool.command === 'auth' ? authEnvironment(config) : undefined;
 						// 30s was too tight for `progress`, which iterates ~50 API calls
-						// (watchlist + watched + NÃ— GetShowProgress) and empirically runs
+						// (watchlist + watched + N× GetShowProgress) and empirically runs
 						// 35-45s for users with substantial watch history. 120s gives
 						// generous headroom. maxBuffer bumped to 4MB to fit the full
 						// progress --all response (completed + in_progress + not_started).
@@ -733,7 +733,7 @@ export default definePluginEntry({
 										error:
 											'Trakt API rate-limited this request' +
 											(retryAfter != null ? ` (retry after ~${retryAfter}s)` : '') +
-											'. Do NOT retry immediately â€” wait out the window before calling any trakt_* tool again, and avoid falling back to other trakt tools (they share the same rate limit bucket).',
+											'. Do NOT retry immediately — wait out the window before calling any trakt_* tool again, and avoid falling back to other trakt tools (they share the same rate limit bucket).',
 										raw: errorOutput,
 									},
 									null,
