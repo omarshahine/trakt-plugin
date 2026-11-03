@@ -44,7 +44,9 @@ func websiteFixture(t *testing.T, scenario string) string {
 		if err != nil {
 			t.Fatal(err)
 		}
-		w.Write([]byte(settings))
+		if _, err := w.Write([]byte(settings)); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := z.Close(); err != nil {
 		t.Fatal(err)
@@ -142,8 +144,13 @@ func TestSupplementedExportPreservesRawAPIAndProvenance(t *testing.T) {
 		t.Fatal("raw API data modified")
 	}
 	var settings map[string]json.RawMessage
-	json.Unmarshal(files["user/settings.json"], &settings)
-	user, _ := decodeObject(settings["user"])
+	if err := json.Unmarshal(files["user/settings.json"], &settings); err != nil {
+		t.Fatal(err)
+	}
+	user, decodeErr := decodeObject(settings["user"])
+	if decodeErr != nil {
+		t.Fatal(decodeErr)
+	}
 	if string(user["email"]) != string(o.WebsiteSupplement.Fields["email"]) || string(user["dob"]) != string(o.WebsiteSupplement.Fields["dob"]) {
 		t.Fatal("supplement fields not merged")
 	}
@@ -206,7 +213,9 @@ func TestSupplementBindingFailureRetainsIncompleteArchive(t *testing.T) {
 		t.Fatal("binding failure not surfaced")
 	}
 	var stored Manifest
-	json.Unmarshal(archive(t, o.Output)["manifest.json"], &stored)
+	if err := json.Unmarshal(archive(t, o.Output)["manifest.json"], &stored); err != nil {
+		t.Fatal(err)
+	}
 	if stored.Complete || len(stored.Errors) == 0 {
 		t.Fatal("partial archive claimed complete")
 	}
