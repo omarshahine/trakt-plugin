@@ -527,6 +527,15 @@ export default definePluginEntry({
 
 						return toolResult(JSON.stringify(result, null, 2));
 					} catch (error: unknown) {
+						// execFile errors include the full command line, which can
+						// contain --client-secret. CLI stderr can echo credentials too.
+						// Never return raw authentication diagnostics to an agent.
+						if (tool.command === 'auth') {
+							return toolResult(JSON.stringify({
+								success: false,
+								error: 'Trakt authentication failed. Run trakt-cli auth separately and inspect its output locally.',
+							}));
+						}
 						const message = error instanceof Error ? error.message : String(error);
 						const stderr =
 							error && typeof error === 'object' && 'stderr' in error
