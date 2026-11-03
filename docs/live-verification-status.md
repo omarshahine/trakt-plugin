@@ -33,17 +33,31 @@ not included in this repository.
 
 ## Known issues and follow-up
 
-### 1. Repeated-watch restoration: unresolved
+### 1. Repeated-watch restoration: account setting identified; safeguard implemented
 
 Submitting two different dates for the same movie did not retain two events in
 the tested account. Readback returned one event despite the bulk added counts.
 A subsequent request returned an updated count, reused the history ID and changed
 its date. Both history read routes agreed on one play.
 
-TODO: establish the supported repeated-watch contract and a minimal reproducible
-case; investigate account/application behavior without assuming a VIP restriction.
-Any future restore executor must verify event multiplicity and dates by readback,
-not trust added counts alone. Do not blindly retry uncertain mutations.
+Follow-up on 2026-11-03 identified `browsing.watch_only_once: true` in the
+extended settings of the isolated test account. A controlled second-date request
+returned `added.movies: 0`, `updated.movies: 1`; readback retained the same
+history ID and replaced its date. Restoring the original date reproduced the
+original history record exactly. No account preference or production data changed.
+
+The local planner now reports `history_policy` and withholds repeat-watch rows
+when that setting is true or unverified. Single missing watches, ratings and
+watchlist additions remain independently eligible. Source archive settings do
+not establish current policy. Missing/null/malformed policy is unknown, not false.
+CLI history-add output retains API `updated` counts rather than discarding them.
+
+Still unverified: positive repeated-watch preservation with the setting disabled,
+and official website import acceptance. The setting must be checked in the
+official Trakt interface before another live positive test; third-party settings
+writes are not assumed supported. This is not evidence of a non-VIP limitation.
+Any future executor must verify multiplicity and dates by readback, not added
+counts alone. Never replay uncertain mutations automatically.
 
 ### 2. Historical watchlist timestamps: not preserved by tested sync requests
 
@@ -91,8 +105,9 @@ Regression tests cover acceptance and refusal without the marker.
 
 1. Submit/review the empty-statistics fix and the pending restore-planner,
    custom-list-management and ratings/favorites branches in dependency order.
-2. Resolve repeated-watch semantics and timestamp limitations before promising a
-   faithful restore executor; keep the planner read-only.
+2. Verify repeated-watch preservation with Disable Multiple Plays off, then
+   resolve timestamp limitations before promising a faithful restore executor;
+   keep the planner read-only.
 3. Verify website import on the isolated test account and explicitly separate its
    capabilities from sync API capabilities.
 4. Add authorized populated-category and VIP test coverage where available.

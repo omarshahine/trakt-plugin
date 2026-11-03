@@ -510,6 +510,14 @@ trakt-cli backup plan-restore --source ./desired.zip --current ./current.zip --j
 trakt-cli backup plan-restore --source ./desired.zip --live-current ./new-current.zip --import-json ./review-import.json --json
 ```
 
+The plan reports `history_policy` from the **current** snapshot's
+`browsing.watch_only_once`. If enabled or unverified, repeat-watch candidates
+are withheld as conflicts: an import can update an existing watch's date rather
+than add a play. Other eligible additions remain available. Verify **Disable
+Multiple Plays** in the official Trakt settings and take a fresh snapshot before
+planning rewatches. The command never changes that preference, and a saved
+`false` value does not prove live/import fidelity or replace post-import readback.
+
 Both archives use the comparison reader's integrity checks; partial native
 backups are refused. Matching account identities are required. Website-layout
 ZIPs still have unknown completeness. The current archive is a snapshot, not a
@@ -517,7 +525,8 @@ lock: refresh it immediately before reviewing any eventual manual import.
 
 Plans contain additions only: missing movie/episode watches, watchlist entries,
 and ratings. Watches are matched by media ID plus normalized timestamp, rather
-than watch-event ID alone; repeated watches at different times are retained.
+than watch-event ID alone; repeated watches at different times remain eligible
+only when the current snapshot explicitly permits multiple plays.
 Ambiguous identical-time repeats, unknown-date ambiguity, invalid dates/ratings,
 and changed ratings are conflicts, not automatic changes. No timestamps are
 fabricated. Explicit `watched_at: "unknown"` is preserved; a missing/null watch

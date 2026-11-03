@@ -33,15 +33,16 @@ type PlanCandidate struct {
 }
 
 type RestorePlan struct {
-	Version      int             `json:"version"`
-	ReadOnly     bool            `json:"read_only"`
-	AccountMatch string          `json:"account_match"`
-	Source       CompareInput    `json:"source"`
-	Current      CompareInput    `json:"current"`
-	Candidates   []PlanCandidate `json:"candidates"`
-	Conflicts    []PlanIssue     `json:"conflicts"`
-	Unsupported  []PlanIssue     `json:"unsupported"`
-	Warnings     []string        `json:"warnings"`
+	Version       int             `json:"version"`
+	ReadOnly      bool            `json:"read_only"`
+	AccountMatch  string          `json:"account_match"`
+	Source        CompareInput    `json:"source"`
+	Current       CompareInput    `json:"current"`
+	Candidates    []PlanCandidate `json:"candidates"`
+	Conflicts     []PlanIssue     `json:"conflicts"`
+	Unsupported   []PlanIssue     `json:"unsupported"`
+	Warnings      []string        `json:"warnings"`
+	HistoryPolicy string          `json:"history_policy"`
 }
 
 // PlanRestore validates both archives and plans additions only. Current is a
@@ -78,6 +79,16 @@ func PlanRestore(source, current string) (RestorePlan, error) {
 		return p, fmt.Errorf("restore planning requires matching account identities in both archives")
 	}
 	p.AccountMatch, p.Source, p.Current = "matched", a.info, b.info
+	p.HistoryPolicy = "unknown"
+	if b.watchOnlyOnce != nil {
+		p.HistoryPolicy = "multiple_plays_allowed"
+		if *b.watchOnlyOnce {
+			p.HistoryPolicy = "watch_only_once"
+		}
+	}
+	if p.HistoryPolicy != "multiple_plays_allowed" {
+		p.Warnings = append(p.Warnings, "Repeat-watch candidates are withheld: current snapshot browsing.watch_only_once is true or unverified. Verify Disable Multiple Plays in the official Trakt settings and take a fresh snapshot; this planner never changes account preferences.")
+	}
 	for _, resource := range sortedKeys(a.data) {
 		rows := a.data[resource]
 		currentRows, covered := b.data[resource]
@@ -108,12 +119,14 @@ func PlanRestore(source, current string) (RestorePlan, error) {
 		}
 		usedWatches := map[string]int{}
 		sourceCounts := map[string]int{}
+		sourceMediaCounts := map[string]int{}
 		for _, row := range rows {
 			key, _, e := planMedia(resource, row)
 			if e != nil {
 				continue
 			}
 			if resource == "history" {
+				sourceMediaCounts[key]++
 				date, e := planDate(row, "watched_at", true)
 				if e != nil {
 					continue
@@ -170,6 +183,10 @@ func PlanRestore(source, current string) (RestorePlan, error) {
 				}
 				if ambiguous || sourceCounts[signature] > 1 {
 					p.Conflicts = append(p.Conflicts, PlanIssue{resource, id, "ambiguous unknown-date or identical-time repeat watch; manual review required"})
+					continue
+				}
+				if p.HistoryPolicy != "multiple_plays_allowed" && (len(index[key]) > 0 || sourceMediaCounts[key] > 1) {
+					p.Conflicts = append(p.Conflicts, PlanIssue{resource, id, "repeat watch withheld: browsing.watch_only_once is enabled or unverified; import could replace an existing watch instead of adding one"})
 					continue
 				}
 			} else if strings.HasPrefix(resource, "ratings/") {

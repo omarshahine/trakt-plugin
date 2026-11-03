@@ -14,6 +14,7 @@ func planZIP(t *testing.T, history, watchlist, ratings string) string {
 	t.Helper()
 	return writeWebsiteComparisonZIP(t, map[string]string{
 		"user-profile.json":      planAccount,
+		"user-settings.json":     `{"browsing":{"watch_only_once":false}}`,
 		"watched-history-1.json": history,
 		"lists-watchlist-1.json": watchlist,
 		"ratings-movies-1.json":  ratings,
@@ -95,7 +96,7 @@ func TestRestorePlanCoverageAccountAndIntegrity(t *testing.T) {
 	source := planZIP(t, `[]`, `[{"id":1,"listed_at":"2026-01-01T00:00:00Z","movie":{"ids":{"trakt":55}}}]`, `[]`)
 	current := writeWebsiteComparisonZIP(t, map[string]string{"user-profile.json": planAccount})
 	p, err := PlanRestore(source, current)
-	if err != nil || len(p.Candidates) != 0 || len(p.Unsupported) != 4 {
+	if err != nil || len(p.Candidates) != 0 || len(p.Unsupported) != 5 {
 		t.Fatalf("coverage inferred: %+v %v", p, err)
 	}
 	for _, files := range []map[string]string{

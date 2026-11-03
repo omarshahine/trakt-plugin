@@ -904,6 +904,12 @@ type SyncHistoryResp struct {
 		Movies   int `json:"movies"`
 		Episodes int `json:"episodes"`
 	} `json:"added"`
+	// With browsing.watch_only_once enabled, a repeated watch can update an
+	// existing event rather than add a new play. Never discard these counts.
+	Updated struct {
+		Movies   int `json:"movies"`
+		Episodes int `json:"episodes"`
+	} `json:"updated"`
 	// NotFound also carries seasons/episodes when the request narrowed a
 	// show via season/episode selectors: Trakt rejects unrecognized
 	// selectors there while still answering 201, so those entries must be

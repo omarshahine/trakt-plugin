@@ -65,8 +65,9 @@ type Comparison struct {
 }
 
 type comparisonArchive struct {
-	info CompareInput
-	data map[string]map[string]json.RawMessage
+	info          CompareInput
+	data          map[string]map[string]json.RawMessage
+	watchOnlyOnce *bool
 }
 
 // Compare opens local ZIPs only. It neither loads credentials nor calls Trakt.
@@ -611,6 +612,8 @@ func readComparisonArchive(filename string) (*comparisonArchive, error) {
 		}
 		a.info = CompareInput{Format: "website_export_layout", Integrity: "zip_crc_json_ids_only", Completeness: "unknown", DataFiles: len(entries)}
 	}
+	// Preserve the API-observed watch policy before removing raw comparison noise.
+	a.watchOnlyOnce = archiveWatchOnlyOnce(a)
 	// Raw snapshots are validated above but are not counted as business-data changes.
 	delete(a.data, "raw-api/user/settings")
 	delete(a.data, "raw-api/user/profile")
