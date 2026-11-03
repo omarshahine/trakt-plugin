@@ -21,9 +21,11 @@ const _runFileAsync = promisify(_runFile);
 export interface RunOptions {
 	timeout?: number;
 	maxBuffer?: number;
+	/** Per-child environment. Omit to inherit the parent environment. */
+	env?: NodeJS.ProcessEnv;
 }
 
-/** Run a binary with arguments and return stdout. No shell, no injection. */
+/** Run a binary with an argv array and return stdout, without a shell. */
 export async function runCli(
 	cli: string,
 	args: string[],
@@ -31,6 +33,7 @@ export async function runCli(
 ): Promise<{ stdout: string; stderr: string }> {
 	const { stdout, stderr } = await _runFileAsync(cli, args, {
 		encoding: 'utf8',
+		env: opts.env,
 		timeout: opts.timeout ?? 120_000,
 		maxBuffer: opts.maxBuffer ?? 4 * 1024 * 1024,
 	});

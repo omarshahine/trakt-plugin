@@ -59,13 +59,15 @@ jobs:
           done
 
       - name: Publish to ClawHub
+        env:
+          RELEASE_CHANGELOG: ${{ steps.changelog.outputs.text }}
         run: |
           clawhub package publish openclaw \
             --family code-plugin \
             --name trakt-tools \
             --display-name Trakt \
             --version "${{ steps.version.outputs.version }}" \
-            --changelog "${{ steps.changelog.outputs.text }}" \
+            --changelog "$RELEASE_CHANGELOG" \
             --tags "latest" \
             --source-repo "${{ github.repository }}" \
             --source-commit "${{ github.sha }}" \

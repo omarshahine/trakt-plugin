@@ -8,8 +8,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -37,9 +38,9 @@ type Credentials struct {
 	RefreshToken string `yaml:"refresh-token,omitempty"`
 	// UserSlug caches the authenticated user's slug so read-only commands
 	// (watchlist, history, progress) don't have to re-fetch /users/settings
-	// on every invocation. Populated by GetUserSlug() on first use and
-	// refreshed by the auth flow. Note: a duplicate of this struct exists
-	// in cmd/auth.go for yaml marshaling on write; keep the two in sync.
+	// on every invocation. Resolved lazily by GetUserSlug after authentication.
+	// The auth command shares this
+	// type when persisting a completed grant.
 	UserSlug string `yaml:"user-slug,omitempty"`
 }
 
@@ -81,8 +82,8 @@ func NewAPIClient() APIClient {
 }
 
 // NewAPIClientWithCredentials constructs an APIClient with explicit credentials
-// instead of loading them from ~/.trakt.yaml. Used by the auth flow to prime
-// the user-slug cache with a just-issued access token before persisting it.
+// instead of loading them from ~/.trakt.yaml. Authentication and isolated
+// transport tests use this path without reading existing account credentials.
 func NewAPIClientWithCredentials(creds Credentials) APIClient {
 	return APIClient{
 		Endpoint: "https://api.trakt.tv",
@@ -179,15 +180,13 @@ func (c *APIClient) RefreshAccessToken() error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		// Drain enough of the body to surface Trakt's error envelope without
-		// dumping a giant HTML page in the unlikely 5xx-from-edge case.
-		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return fmt.Errorf("refresh rejected (%s): %s", resp.Status, strings.TrimSpace(string(snippet)))
+		// OAuth error bodies can echo submitted credentials. Keep them private.
+		return fmt.Errorf("refresh rejected (HTTP %d)", resp.StatusCode)
 	}
 
 	var fresh OAuthRefreshResp
-	if err := json.NewDecoder(resp.Body).Decode(&fresh); err != nil {
-		return fmt.Errorf("refresh response decode: %w", err)
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 64*1024)).Decode(&fresh); err != nil {
+		return fmt.Errorf("invalid refresh response")
 	}
 	if fresh.AccessToken == "" {
 		return fmt.Errorf("refresh response missing access_token")
@@ -199,7 +198,9 @@ func (c *APIClient) RefreshAccessToken() error {
 		// new one or the next refresh fails with invalid_grant.
 		c.Credentials.RefreshToken = fresh.RefreshToken
 	}
-	c.writeCredentials()
+	if err := c.writeCredentials(); err != nil {
+		return fmt.Errorf("persist refreshed credentials: %w", err)
+	}
 	return nil
 }
 
@@ -264,10 +265,9 @@ func (c *APIClient) doRequest(params requestParams) (*http.Response, error) {
 		}
 	}
 
-	// Auto-refresh on 401: if the access token expired (or was revoked) and
-	// we have a refresh token, refresh once and retry. This is best-effort —
-	// the original 401 is returned if refresh fails for any reason, so the
-	// caller sees a normal auth failure instead of a silent retry loop.
+	// Auto-refresh on 401: refresh once and retry only after durable token
+	// persistence. Refresh failures propagate rather than silently accepting
+	// in-memory tokens that the next CLI process cannot recover.
 	// Only fires when this call carried auth headers, has a refresh token,
 	// and isn't itself the refresh call (noAutoRefresh).
 	if resp.StatusCode == http.StatusUnauthorized &&
@@ -276,13 +276,7 @@ func (c *APIClient) doRequest(params requestParams) (*http.Response, error) {
 		c.Credentials.RefreshToken != "" {
 		resp.Body.Close()
 		if refreshErr := c.RefreshAccessToken(); refreshErr != nil {
-			logrus.WithError(refreshErr).Warn("trakt-cli: 401 on " + params.path + " and refresh failed; returning original auth error")
-			// Re-issue the original request to get back a clean 401 response
-			// for the caller to interpret. Recurse with noAutoRefresh to avoid
-			// loops if the refresh somehow partially succeeded.
-			retryParams := params
-			retryParams.noAutoRefresh = true
-			return c.doRequest(retryParams)
+			return nil, fmt.Errorf("refresh authentication: %w", refreshErr)
 		}
 		// Refresh succeeded — retry the original request once with the new
 		// bearer. Set noAutoRefresh so we don't recurse if the new token is
@@ -296,23 +290,60 @@ func (c *APIClient) doRequest(params requestParams) (*http.Response, error) {
 	return resp, nil
 }
 
-// writeCredentials persists c.Credentials to ~/.trakt.yaml. Best-effort:
-// write errors are logged but not returned, because the read commands that
-// trigger a slug refresh should not fail just because disk persistence fails.
-func (c *APIClient) writeCredentials() {
-	homeDir, err := os.UserHomeDir()
+// SaveCredentials atomically replaces the private credential file. Failure is
+// observable by the caller; a successful token exchange is not durable until
+// this function returns nil. Symlink and non-file destinations are rejected.
+func SaveCredentials(creds Credentials) error {
+	home, err := os.UserHomeDir()
 	if err != nil {
-		logrus.WithError(err).Warn("Failed to resolve home directory for trakt credential cache")
-		return
+		return fmt.Errorf("resolve credential directory: %w", err)
 	}
-	data, err := yaml.Marshal(&c.Credentials)
+	path := filepath.Join(home, ".trakt.yaml")
+	if info, statErr := os.Lstat(path); statErr == nil {
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("credential destination is not a regular file")
+		}
+	} else if !os.IsNotExist(statErr) {
+		return fmt.Errorf("inspect credential destination: %w", statErr)
+	}
+	data, err := yaml.Marshal(&creds)
 	if err != nil {
-		logrus.WithError(err).Warn("Failed to marshal trakt credentials for cache write")
-		return
+		return fmt.Errorf("encode credentials: %w", err)
 	}
-	if err := os.WriteFile(homeDir+"/.trakt.yaml", data, 0600); err != nil {
-		logrus.WithError(err).Warn("Failed to write trakt credential cache ~/.trakt.yaml")
+	file, err := os.CreateTemp(home, ".trakt-credentials-*")
+	if err != nil {
+		return fmt.Errorf("create credential file: %w", err)
 	}
+	temp := file.Name()
+	defer os.Remove(temp)
+	defer file.Close()
+	if _, err := file.Write(data); err != nil {
+		return fmt.Errorf("write credential file: %w", err)
+	}
+	if err := file.Sync(); err != nil {
+		return fmt.Errorf("sync credential file: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close credential file: %w", err)
+	}
+	if err := os.Rename(temp, path); err != nil {
+		return fmt.Errorf("replace credential file: %w", err)
+	}
+	if runtime.GOOS != "windows" {
+		directory, err := os.Open(home)
+		if err != nil {
+			return fmt.Errorf("open credential directory for sync: %w", err)
+		}
+		defer directory.Close()
+		if err := directory.Sync(); err != nil {
+			return fmt.Errorf("sync credential directory: %w", err)
+		}
+	}
+	return nil
+}
+
+func (c *APIClient) writeCredentials() error {
+	return SaveCredentials(c.Credentials)
 }
 
 // GetUserSlug returns the authenticated user's trakt slug, using an on-disk
@@ -328,7 +359,10 @@ func (c *APIClient) GetUserSlug() (string, error) {
 		return "", err
 	}
 	c.Credentials.UserSlug = settings.User.Ids.Slug
-	c.writeCredentials()
+	if err := c.writeCredentials(); err != nil {
+		// Slug caching is optional; token persistence is not.
+		logrus.WithError(err).Warn("Failed to persist trakt user-slug cache")
+	}
 	return c.Credentials.UserSlug, nil
 }
 
@@ -344,10 +378,13 @@ func (c *APIClient) AuthDeviceCode(req *AuthDeviceCodeReq) (*AuthDeviceCodeResp,
 		return nil, err
 	}
 	defer httpResp.Body.Close()
+	if httpResp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("device authorization start failed (HTTP %d)", httpResp.StatusCode)
+	}
 
-	err = json.NewDecoder(httpResp.Body).Decode(&resp)
+	err = json.NewDecoder(io.LimitReader(httpResp.Body, 64*1024)).Decode(&resp)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid device authorization response")
 	}
 
 	return &resp, nil
@@ -381,13 +418,19 @@ func (c *APIClient) AuthDeviceToken(req *AuthDeviceTokenReq) (*AuthDeviceTokenRe
 	}
 	defer httpResp.Body.Close()
 
-	if httpResp.StatusCode == 200 {
-		err = json.NewDecoder(httpResp.Body).Decode(&resp)
-		if err != nil {
-			return nil, err
-		}
+	// Trakt's device flow uses 400 while the user has not authorized yet.
+	if httpResp.StatusCode == http.StatusBadRequest {
+		return &resp, nil
 	}
-
+	if httpResp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("device authorization poll failed (HTTP %d)", httpResp.StatusCode)
+	}
+	if err := json.NewDecoder(io.LimitReader(httpResp.Body, 64*1024)).Decode(&resp); err != nil {
+		return nil, fmt.Errorf("invalid device authorization response")
+	}
+	if resp.AccessToken == "" {
+		return nil, fmt.Errorf("device authorization response missing access token")
+	}
 	return &resp, nil
 }
 
