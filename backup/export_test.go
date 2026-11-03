@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -27,10 +28,18 @@ type fakeSource struct {
 func raw(s string) json.RawMessage { return json.RawMessage(s) }
 func fixture() *fakeSource {
 	return &fakeSource{data: map[string][]json.RawMessage{
-		"history":      {raw(`{"id":11,"watched_at":"2026-01-01T00:00:00Z","movie":{"ids":{"trakt":55}}}`), raw(`{"id":12,"watched_at":"2026-01-02T00:00:00Z","movie":{"ids":{"trakt":55}}}`), raw(`{"id":13,"action":"watch","type":"episode","episode":{"ids":{"trakt":56}}}`)},
-		"watchlist":    {raw(`{"id":21,"rank":1,"notes":"synthetic note","my_rating":8}`)},
-		"lists":        {raw(`{"name":"Synthetic","ids":{"trakt":7},"privacy":"private","sort_by":"rank","item_count":3,"future_field":true}`)},
-		"list_items:7": {raw(`{"id":31,"type":"movie","movie":{"ids":{"trakt":55}}}`), raw(`{"id":32,"type":"person","person":{"ids":{"trakt":66}}}`), raw(`{"id":33,"type":"season","season":{"number":2},"notes":null}`)},
+		"history":             {raw(`{"id":11,"watched_at":"2026-01-01T00:00:00Z","movie":{"ids":{"trakt":55}}}`), raw(`{"id":12,"watched_at":"2026-01-02T00:00:00Z","movie":{"ids":{"trakt":55}}}`), raw(`{"id":13,"action":"watch","type":"episode","episode":{"ids":{"trakt":56}}}`)},
+		"watchlist":           {raw(`{"id":21,"rank":1,"notes":"synthetic note","my_rating":8}`)},
+		"lists":               {raw(`{"name":"Synthetic","ids":{"trakt":7},"privacy":"private","sort_by":"rank","item_count":3,"future_field":true}`)},
+		"list_items:7":        {raw(`{"id":31,"type":"movie","movie":{"ids":{"trakt":55}}}`), raw(`{"id":32,"type":"person","person":{"ids":{"trakt":66}}}`), raw(`{"id":33,"type":"season","season":{"number":2},"notes":null}`)},
+		"ratings/movies":      {raw(`{"rating":8,"rated_at":"2026-01-01T00:00:00Z","movie":{"ids":{"trakt":55}}}`), raw(`{"rating":7,"movie":{"ids":{"trakt":56}}}`), raw(`{"rating":9,"movie":{"ids":{"trakt":57}}}`)},
+		"ratings/shows":       {raw(`{"rating":8,"show":{"ids":{"trakt":55}}}`)},
+		"ratings/seasons":     {raw(`{"rating":8,"season":{"ids":{"trakt":55},"number":1},"show":{"ids":{"trakt":99}}}`)},
+		"ratings/episodes":    {raw(`{"rating":8,"episode":{"ids":{"trakt":55}},"show":{"ids":{"trakt":99}}}`), raw(`{"rating":9,"episode":{"ids":{"trakt":56}},"show":{"ids":{"trakt":99}}}`)},
+		"collection/movies":   {raw(`{"collected_at":"2026-01-01T00:00:00Z","movie":{"ids":{"trakt":55}},"metadata":{"media_type":"digital","resolution":"hd_1080p","audio":"dts"}}`)},
+		"collection/shows":    {raw(`{"show":{"ids":{"trakt":55}},"seasons":[{"number":1,"episodes":[{"number":1,"collected_at":"2026-01-01T00:00:00Z","metadata":{"resolution":"hd_1080p"}}]}]}`)},
+		"collection/episodes": {raw(`{"episode":{"ids":{"trakt":55}},"show":{"ids":{"trakt":99}},"metadata":{"audio":"dts"}}`)},
+		"favorites":           {raw(`{"id":55,"rank":1,"type":"movie","movie":{"ids":{"trakt":55}},"notes":"synthetic favorite"}`), raw(`{"id":56,"rank":2,"type":"show","show":{"ids":{"trakt":55}}}`)},
 	}}
 }
 func (f *fakeSource) GetBackupActivity() (json.RawMessage, error) {
@@ -107,7 +116,7 @@ func TestExportAllPagesAndChecksums(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !m.Complete || m.Consistency != "activity_marker_unchanged" || len(m.Resources) != 4 || f.markers != 2 {
+	if !m.Complete || m.Consistency != "activity_marker_unchanged" || len(m.Resources) != 12 || f.markers != 2 {
 		t.Fatalf("manifest: %+v", m)
 	}
 	files := archive(t, o.Output)
@@ -151,6 +160,20 @@ func TestExportAllPagesAndChecksums(t *testing.T) {
 	}
 	if m.Resources[0].Records != 3 {
 		t.Fatal("rewatches were deduplicated by title")
+	}
+	for _, scope := range []string{"ratings", "collections", "favorites"} {
+		if !slices.Contains(m.Scopes, scope) || slices.Contains(m.Excluded, scope) {
+			t.Fatalf("incorrect scope: %s", scope)
+		}
+	}
+	for _, check := range []struct{ path, field string }{
+		{"ratings/movies/page-000001.json", `"rated_at"`}, {"ratings/movies/page-000002.json", `"rating": 9`},
+		{"collection/movies/page-000001.json", `"audio": "dts"`}, {"collection/shows/page-000001.json", `"episodes"`},
+		{"favorites/page-000001.json", `"notes": "synthetic favorite"`},
+	} {
+		if !strings.Contains(string(files[check.path]), check.field) {
+			t.Fatalf("lost field %s", check.path)
+		}
 	}
 }
 
@@ -303,6 +326,46 @@ func TestExportHistoryReconcilesStaleCounts(t *testing.T) {
 					}
 				} else if err == nil || m.Complete {
 					t.Fatalf("unsafe export accepted: %+v %v", m, err)
+				}
+			})
+		}
+	}
+}
+
+func TestExpandedResourcesRejectInvalidIdentities(t *testing.T) {
+	for _, resource := range []string{"ratings/movies", "ratings/shows", "ratings/seasons", "ratings/episodes", "collection/movies", "collection/shows", "collection/episodes", "favorites"} {
+		for _, scenario := range []string{"missing", "duplicate", "denied", "missing_headers"} {
+			t.Run(resource+"/"+scenario, func(t *testing.T) {
+				f := fixture()
+				switch scenario {
+				case "missing":
+					f.data[resource][0] = raw(`{"id":999,"show":{"ids":{"trakt":99}}}`)
+					// A parent show or top-level fallback ID is not a media identity.
+					if resource == "favorites" || strings.HasSuffix(resource, "/shows") {
+						f.data[resource][0] = raw(`{}`)
+					}
+				case "duplicate":
+					f.data[resource] = append(f.data[resource], f.data[resource][0])
+				}
+				f.intercept = func(key string, _ int, rows []json.RawMessage, p api.Pagination) ([]json.RawMessage, api.Pagination, error) {
+					if key == resource {
+						if scenario == "denied" {
+							return nil, p, fmt.Errorf("403 Forbidden")
+						}
+						if scenario == "missing_headers" {
+							p.ItemCount = ""
+						}
+					}
+					return rows, p, nil
+				}
+				o := options(t)
+				m, err := Export(f, o)
+				if err == nil || m.Complete || len(m.Errors) == 0 {
+					t.Fatalf("invalid resource accepted: %+v %v", m, err)
+				}
+				var stored Manifest
+				if err := json.Unmarshal(archive(t, o.Output)["manifest.json"], &stored); err != nil || stored.Complete {
+					t.Fatal("partial archive not marked incomplete")
 				}
 			})
 		}

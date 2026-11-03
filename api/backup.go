@@ -17,6 +17,7 @@ func (c *APIClient) GetBackupPage(user, resource, listID string, p PaginationsPa
 	}
 	base := "/users/" + url.PathEscape(user)
 	var path string
+	var query map[string]string
 	switch resource {
 	case "history":
 		path = base + "/history"
@@ -24,6 +25,13 @@ func (c *APIClient) GetBackupPage(user, resource, listID string, p PaginationsPa
 		path = base + "/watchlist"
 	case "lists":
 		path = base + "/lists"
+	case "ratings/movies", "ratings/shows", "ratings/seasons", "ratings/episodes":
+		path = base + "/" + resource
+	case "collection/movies", "collection/shows", "collection/episodes":
+		path = base + "/" + resource
+		query = map[string]string{"extended": "metadata"}
+	case "favorites":
+		path = base + "/favorites/media"
 	case "list_items":
 		id, err := strconv.ParseInt(listID, 10, 64)
 		if err != nil || id <= 0 {
@@ -33,7 +41,7 @@ func (c *APIClient) GetBackupPage(user, resource, listID string, p PaginationsPa
 	default:
 		return nil, Pagination{}, fmt.Errorf("unsupported backup resource")
 	}
-	return c.getRecordPage(path, p, true)
+	return c.getRecordPageWithQuery(path, p, true, query)
 }
 
 // GetBackupActivity is used before and after export to detect account changes.

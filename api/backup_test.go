@@ -4,15 +4,23 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
 func TestBackupResourceRoutes(t *testing.T) {
-	for _, tc := range []struct{ resource, list, path string }{{"history", "", "/users/sample/history"}, {"watchlist", "", "/users/sample/watchlist"}, {"lists", "", "/users/sample/lists"}, {"list_items", "7", "/users/sample/lists/7/items"}} {
+	for _, tc := range []struct{ resource, list, path string }{
+		{"history", "", "/users/sample/history"}, {"watchlist", "", "/users/sample/watchlist"}, {"lists", "", "/users/sample/lists"}, {"list_items", "7", "/users/sample/lists/7/items"},
+		{"ratings/movies", "", "/users/sample/ratings/movies"}, {"ratings/shows", "", "/users/sample/ratings/shows"}, {"ratings/seasons", "", "/users/sample/ratings/seasons"}, {"ratings/episodes", "", "/users/sample/ratings/episodes"},
+		{"collection/movies", "", "/users/sample/collection/movies"}, {"collection/shows", "", "/users/sample/collection/shows"}, {"collection/episodes", "", "/users/sample/collection/episodes"}, {"favorites", "", "/users/sample/favorites/media"},
+	} {
 		t.Run(tc.resource, func(t *testing.T) {
 			s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.Method != "GET" || r.URL.Path != tc.path || r.Header.Get("Authorization") != "Bearer synthetic" || r.Header.Get("Cache-Control") != "no-cache" {
 					t.Errorf("bad request %s %s", r.Method, r.URL.Path)
+				}
+				if strings.HasPrefix(tc.resource, "collection/") && r.URL.Query().Get("extended") != "metadata" {
+					t.Error("collection metadata not requested")
 				}
 				fmt.Fprint(w, `[{"id":1,"unknown_field":true}]`)
 			}))
@@ -25,7 +33,7 @@ func TestBackupResourceRoutes(t *testing.T) {
 		})
 	}
 	c := APIClient{}
-	for _, tc := range []struct{ resource, list string }{{"arbitrary", ""}, {"list_items", "../secret"}, {"list_items", "0"}} {
+	for _, tc := range []struct{ resource, list string }{{"arbitrary", ""}, {"list_items", "../secret"}, {"list_items", "0"}, {"ratings/../settings", ""}, {"collection/people", ""}} {
 		if _, _, err := c.GetBackupPage("sample", tc.resource, tc.list, PaginationsParams{1, 10}); err == nil {
 			t.Fatal("accepted invalid route")
 		}

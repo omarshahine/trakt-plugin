@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/omarshahine/trakt-plugin/api"
@@ -65,7 +66,7 @@ type exporter struct {
 
 // Export refuses to overwrite an existing path. A failed export retains a ZIP
 // with complete=false and details of completed pages when storage permits.
-// Completeness is scoped to history/watchlist/custom lists, not the website's
+// Completeness is scoped to the manifest's resource categories, not the website's
 // full account export. An unchanged activity marker is evidence of consistency,
 // not a transactional snapshot guarantee from Trakt.
 func Export(source Source, o Options) (m Manifest, err error) {
@@ -76,8 +77,8 @@ func Export(source Source, o Options) (m Manifest, err error) {
 	if err != nil {
 		return m, err
 	}
-	m = Manifest{Version: 1, StartedAt: time.Now().UTC(), Scopes: []string{"history", "watchlist", "custom_lists"},
-		Excluded:    []string{"ratings", "collections", "favorites", "comments", "notes_outside_lists", "hidden_items", "settings", "social", "collaborated_lists_owned_by_others"},
+	m = Manifest{Version: 1, StartedAt: time.Now().UTC(), Scopes: []string{"history", "watchlist", "custom_lists", "ratings", "collections", "favorites"},
+		Excluded:    []string{"comments", "notes_outside_lists", "hidden_items", "settings", "social", "collaborated_lists_owned_by_others"},
 		Consistency: "unverified", Files: []File{}, Resources: []Resource{}, Errors: []string{}}
 	x := exporter{source: source, options: o, zip: zip.NewWriter(f), manifest: &m}
 	workErr := x.run()
@@ -122,7 +123,7 @@ func (x *exporter) run() error {
 	if err != nil {
 		return fmt.Errorf("initial activity marker: %w", err)
 	}
-	for _, resource := range []string{"history", "watchlist"} {
+	for _, resource := range []string{"history", "watchlist", "ratings/movies", "ratings/shows", "ratings/seasons", "ratings/episodes", "collection/movies", "collection/shows", "collection/episodes", "favorites"} {
 		if _, err := x.collect(resource, "", -1); err != nil {
 			return err
 		}
@@ -223,20 +224,8 @@ func (x *exporter) collect(resource, listID string, metadataCount int) ([]json.R
 			return nil, fmt.Errorf("%s page %d: got %d records, expected %d", name, page, len(records), expected)
 		}
 		for _, raw := range records {
-			var record struct {
-				ID  json.Number `json:"id"`
-				IDs struct {
-					Trakt json.Number `json:"trakt"`
-				} `json:"ids"`
-			}
-			if err := json.Unmarshal(raw, &record); err != nil {
-				return nil, fmt.Errorf("%s: invalid record", name)
-			}
-			id := record.ID.String()
-			if resource == "lists" {
-				id = record.IDs.Trakt.String()
-			}
-			if id == "" || seen[id] {
+			id, err := recordIdentity(resource, raw)
+			if err != nil || seen[id] {
 				return nil, fmt.Errorf("%s: missing or duplicate record ID (unstable pagination)", name)
 			}
 			seen[id] = true
@@ -276,4 +265,43 @@ func (x *exporter) collect(resource, listID string, metadataCount int) ([]json.R
 		}
 	}
 	return nil, fmt.Errorf("%s: max-pages limit reached; export incomplete", name)
+}
+
+// History and list rows have entry IDs; ratings and collections identify media.
+// In particular, episode/season IDs must not be replaced by their parent show ID.
+func recordIdentity(resource string, raw json.RawMessage) (string, error) {
+	var record map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &record); err != nil {
+		return "", err
+	}
+	identity := record["id"]
+	if resource == "lists" {
+		var ids struct {
+			Trakt json.Number `json:"trakt"`
+		}
+		if err := json.Unmarshal(record["ids"], &ids); err != nil {
+			return "", err
+		}
+		identity = json.RawMessage(ids.Trakt.String())
+	} else if strings.HasPrefix(resource, "ratings/") || strings.HasPrefix(resource, "collection/") {
+		mediaType := strings.TrimSuffix(strings.SplitN(resource, "/", 2)[1], "s")
+		var media struct {
+			IDs struct {
+				Trakt json.Number `json:"trakt"`
+			} `json:"ids"`
+		}
+		if err := json.Unmarshal(record[mediaType], &media); err != nil {
+			return "", err
+		}
+		identity = json.RawMessage(media.IDs.Trakt.String())
+	}
+	var id json.Number
+	if err := json.Unmarshal(identity, &id); err != nil {
+		return "", err
+	}
+	n, err := strconv.ParseInt(id.String(), 10, 64)
+	if err != nil || n <= 0 {
+		return "", fmt.Errorf("invalid positive record ID")
+	}
+	return id.String(), nil
 }

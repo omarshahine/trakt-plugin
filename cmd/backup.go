@@ -11,8 +11,8 @@ import (
 )
 
 var backupCmd = &cobra.Command{
-	Use: "backup", SilenceUsage: true, Short: "Export raw history, watchlist and custom lists to a new ZIP",
-	Long: "Read-only Trakt export with pagination, counts, checksums and a completeness manifest. Not the full website export. Never overwrites files. Failed exports retain partial data and exit nonzero.",
+	Use: "backup", SilenceUsage: true, Short: "Export raw history, lists, ratings, collections and favorites to a new ZIP",
+	Long: "Read-only Trakt export of history, watchlist, custom lists, ratings, collections and favorites with pagination, counts, checksums and a completeness manifest. Not the full website export. Never overwrites files. Failed exports retain partial data and exit nonzero.",
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		output, _ := cmd.Flags().GetString("output")

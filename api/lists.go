@@ -33,10 +33,14 @@ func (c *APIClient) getListRecords(path string, params PaginationsParams) ([]jso
 }
 
 func (c *APIClient) getRecordPage(path string, params PaginationsParams, fresh bool) ([]json.RawMessage, Pagination, error) {
+	return c.getRecordPageWithQuery(path, params, fresh, nil)
+}
+
+func (c *APIClient) getRecordPageWithQuery(path string, params PaginationsParams, fresh bool, query map[string]string) ([]json.RawMessage, Pagination, error) {
 	if params.Page < 1 || params.Limit < 1 || params.Limit > 1000 {
 		return nil, Pagination{}, fmt.Errorf("page must be positive and limit must be between 1 and 1000")
 	}
-	resp, err := c.doRequest(requestParams{method: http.MethodGet, path: path, auth: true, pagination: params, noCache: fresh})
+	resp, err := c.doRequest(requestParams{method: http.MethodGet, path: path, auth: true, pagination: params, noCache: fresh, query: query})
 	if err != nil {
 		return nil, Pagination{}, err
 	}

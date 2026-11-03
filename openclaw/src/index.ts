@@ -116,7 +116,7 @@ const TOOLS: ToolDef[] = [
 		name: 'trakt_backup',
 		command: 'backup',
 		description:
-			'Create a new local ZIP containing all pages of raw history, watchlist and owned custom lists. Includes checksums, counts and an explicit scoped completeness manifest. Never overwrites a file or changes Trakt. Contains private data; use on user request. Not the full website export. Failures retain a partial ZIP marked incomplete; do not retry after rate limiting until the stated interval has passed.',
+			'Create a new local ZIP containing all pages of raw history, watchlist, owned custom lists, ratings, collections and favorites. Includes checksums, counts and an explicit scoped completeness manifest. Never overwrites a file or changes Trakt. Contains private data; use on user request. Not the full website export. Failures retain a partial ZIP marked incomplete; do not retry after rate limiting until the stated interval has passed.',
 		parameters: Type.Object({
 			output: Type.String({ minLength: 1, description: 'New local ZIP path; must not already exist' }),
 			limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000, description: 'Records per API page (default 1000)' })),

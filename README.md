@@ -313,8 +313,11 @@ MIT
 trakt-cli backup --output ./trakt-backup.zip --json
 ```
 
-Creates a **new** ZIP with every page of history, watchlist, custom-list metadata
-and each owned custom list's contents. Reuses the current login; does not change
+Creates a **new** ZIP with every page of history, watchlist, custom-list metadata,
+each owned custom list's contents, movie/show/season/episode ratings,
+movie/show/episode collections, and mixed movie/show favorites.
+Collections request `extended=metadata` and retain returned collection timestamps,
+technical metadata, and nested season/episode data. Reuses the current login; does not change
 Trakt or include OAuth credentials. Existing output files are never overwritten.
 Keep the ZIP private. It contains your account data.
 
@@ -338,9 +341,13 @@ stops the export. No automatic retry is made after a rate limit. Failed exports
 exit nonzero and retain available pages with `complete: false` and errors in the
 manifest when storage permits. Do not treat a partial ZIP as a complete backup.
 
-This is **not** the website's full export or a restore feature. Ratings, collections,
-favorites, comments, notes outside lists, hidden items, settings, social data and
-collaborated lists owned by others are explicitly excluded for this first version.
+Ratings and collections are identified by the corresponding media's Trakt ID,
+not its parent show's ID. Their pagination totals remain strict; history's
+terminal-count reconciliation does not silently relax other categories.
+
+This is **not** the website's full export or a restore feature. Comments, notes
+outside lists, hidden items, settings, social data and collaborated lists owned
+by others remain explicitly excluded.
 OpenClaw exposes `trakt_backup` with `output`, `limit`, `delay_ms` and `max_pages`.
 The development CLI and plugin must both include this feature. Large histories can
 take several minutes; use the CLI directly if the plugin timeout is insufficient.
