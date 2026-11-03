@@ -63,6 +63,18 @@ test('backup forwards a local path as one argument without invoking a shell', as
 	assert.ok(manifest.contracts.tools.includes('trakt_backup'));
 });
 
+test('restore planner works offline without auth and only forwards review-file arguments', async () => {
+	const tool = tools.find((tool) => tool.name === 'trakt_backup_plan_restore');
+	const manifest = JSON.parse(readFileSync(new URL('../openclaw.plugin.json', import.meta.url)));
+	assert.ok(manifest.contracts.tools.includes(tool.name));
+	authConfigured = false;
+	try {
+		await tool.execute('test', { source: '/synthetic/source.zip', current: '/synthetic/current.zip', import_json: '/synthetic/review; literal.json' });
+		assert.deepEqual(calls.at(-1).args, ['backup', 'plan-restore', '--source', '/synthetic/source.zip', '--current', '/synthetic/current.zip', '--import-json', '/synthetic/review; literal.json', '--json']);
+		assert.deepEqual(tool.parameters.required, ['source', 'current']);
+	} finally { authConfigured = true; }
+});
+
 test('local backup comparison works without auth and passes paths as literal arguments', async () => {
 	const tool = tools.find((tool) => tool.name === 'trakt_backup_compare');
 	const manifest = JSON.parse(readFileSync(new URL('../openclaw.plugin.json', import.meta.url)));

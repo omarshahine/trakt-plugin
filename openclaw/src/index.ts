@@ -126,6 +126,17 @@ const TOOLS: ToolDef[] = [
 		}),
 	},
 	{
+		name: 'trakt_backup_plan_restore',
+		command: 'backup',
+		subcommand: 'plan-restore',
+		description: 'Read-only restore preview from two local validated ZIPs, requiring matching accounts. Reports missing watches, watchlist items, ratings and custom-list gaps. Conflicts and unsupported data are withheld from optional Trakt website import JSON. Current is a supplied snapshot, not live account state; refresh with trakt_backup first. Does not import, delete, call Trakt, or load credentials. Private output includes IDs, dates and ratings; use only on user request.',
+		parameters: Type.Object({
+			source: Type.String({ minLength: 1, description: 'Backup containing desired records' }),
+			current: Type.String({ minLength: 1, description: 'Fresh current-account backup ZIP, preferably just created with trakt_backup' }),
+			import_json: Type.Optional(Type.String({ minLength: 1, description: 'Optional NEW local review-only import JSON file; never overwritten or imported automatically' })),
+		}),
+	},
+	{
 		name: 'trakt_backup_compare',
 		command: 'backup',
 		subcommand: 'compare',
@@ -401,7 +412,7 @@ export default definePluginEntry({
 				parameters: tool.parameters,
 
 				async execute(_id: string, params: Record<string, unknown>) {
-					const localComparison = tool.command === 'backup' && tool.subcommand === 'compare';
+					const localComparison = tool.command === 'backup' && (tool.subcommand === 'compare' || tool.subcommand === 'plan-restore');
 					if (tool.command !== 'auth' && !localComparison && !isAuthConfigured()) {
 						return toolResult(
 							JSON.stringify(

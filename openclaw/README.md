@@ -191,5 +191,16 @@ remain visible, including when both archives reuse the same saved source.
 Comparison refuses archives with over 10,000 ZIP members, an expanded member
 over 16 MiB or a total expanded size over 512 MiB.
 OpenClaw exposes `trakt_backup` with `output`, `limit`, `delay_ms` and `max_pages`.
+OpenClaw also exposes `trakt_backup_plan_restore` with `source`, `current` and
+optional `import_json`. It works offline without authentication, validates both
+archives, requires matching accounts and previews missing watches/watchlist/ratings.
+Current means a supplied snapshot: run `trakt_backup` first to refresh it. Conflicts,
+ambiguous repeat watches and missing coverage are withheld from import JSON.
+Custom-list gaps are reported but cannot be targeted by Trakt's website JSON format.
+Other categories, notes/ranks and historical supplemental fields are not restored.
+The optional NEW JSON file follows Trakt's website import guidelines, using string
+`trakt_id` values and one action per row. It is never uploaded or imported by this
+tool; actual website import acceptance remains untested. Reports/files contain
+private IDs, dates and ratings. No account write or delete functionality is added.
 The development CLI and plugin must both include this feature. Large histories can
 take several minutes; use the CLI directly if the plugin timeout is insufficient.
