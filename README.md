@@ -493,6 +493,45 @@ exporter does not fetch or refresh these saved values automatically.
 This closes known missing account-field paths, not a promise that a newer backup
 equals an older website snapshot or that future website fields are covered.
 
+#### Restore planning and website import JSON (preview only)
+
+```bash
+# Offline: supply a freshly created current-account backup.
+trakt-cli backup plan-restore --source ./desired.zip --current ./current.zip --json
+# Or fetch a fresh API snapshot to a NEW ZIP, then plan.
+trakt-cli backup plan-restore --source ./desired.zip --live-current ./new-current.zip --import-json ./review-import.json --json
+```
+
+Both archives use the comparison reader's integrity checks; partial native
+backups are refused. Matching account identities are required. Website-layout
+ZIPs still have unknown completeness. The current archive is a snapshot, not a
+lock: refresh it immediately before reviewing any eventual manual import.
+
+Plans contain additions only: missing movie/episode watches, watchlist entries,
+and ratings. Watches are matched by media ID plus normalized timestamp, rather
+than watch-event ID alone; repeated watches at different times are retained.
+Ambiguous identical-time repeats, unknown-date ambiguity, invalid dates/ratings,
+and changed ratings are conflicts, not automatic changes. No timestamps are
+fabricated. Explicit `watched_at: "unknown"` is preserved; a missing/null watch
+timestamp is not silently treated as unknown. Missing coverage is not deletion.
+Custom-list gaps are reported separately: the website importer has no target-list
+field. Other categories are explicitly unsupported; notes, rank, supplemental
+account fields and history-event IDs are not restored.
+
+Optional `--import-json` creates a **new** local array containing conflict-free
+candidate rows using `trakt_id` (string), `type`, and the appropriate `watched_at`,
+`watchlisted_at`, or `rating`/`rated_at` fields from Trakt's JSON guidelines. It
+does **not** upload or import this file. Each row contains one action; no unrelated
+actions are combined. Media without a usable Trakt ID are withheld. Missing rating
+timestamps are omitted, as allowed by the format. Actual website import acceptance
+and duplicate-watch behavior have not been live-tested; review before use.
+Plans and import files contain private IDs/dates/ratings. Input ZIPs are unchanged.
+
+OpenClaw exposes `trakt_backup_plan_restore` with `source`, `current`, and optional
+`import_json`. This plugin tool is offline and needs no Trakt authentication;
+use `trakt_backup` first for fresh account state. No restore API calls or deletions
+are implemented. No backup or report should be committed to the repository.
+
 #### Read-only archive comparison
 
 ```bash
