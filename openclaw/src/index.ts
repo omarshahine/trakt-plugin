@@ -113,6 +113,52 @@ const TOOLS: ToolDef[] = [
 		}),
 	},
 	{
+		name: 'trakt_backup',
+		command: 'backup',
+		description:
+			'Create a new local ZIP covering raw history, lists, ratings, collections, favorites, playback, watched summaries, hidden items, comments/replies, notes, social/like data, saved filters and account snapshots. Includes checksums, counts and explicit API-scope completeness, not guaranteed website-field parity. Collaborated lists include metadata only. Never overwrites files or changes Trakt. Contains private data; use on user request. Failures retain a partial ZIP marked incomplete; do not retry after rate limiting until the stated interval has passed.',
+		parameters: Type.Object({
+			output: Type.String({ minLength: 1, description: 'New local ZIP path; must not already exist' }),
+			limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000, description: 'Records per API page (default 1000)' })),
+			delay_ms: Type.Optional(Type.Integer({ minimum: 0, description: 'Minimum milliseconds between requests (default 1000)' })),
+			max_pages: Type.Optional(Type.Integer({ minimum: 1, description: 'Maximum pages per resource (default 10000); hitting it makes export incomplete' })),
+			website_supplement: Type.Optional(Type.String({ minLength: 1, description: 'Local JSON from backup import-supplement; fills only missing website-only account fields, preserves raw API snapshots and records historical provenance' })),
+		}),
+	},
+	{
+		name: 'trakt_backup_compare',
+		command: 'backup',
+		subcommand: 'compare',
+		description: 'Read-only local comparison of two backup ZIPs. Validates native manifest checksums/counts/IDs and refuses partial backups; website-layout ZIPs get CRC/JSON/ID checks but unknown completeness. Reports coverage-aware additions, removals and changed field paths, never before/after values. Historical supplements require freshness review. No Trakt login, network calls, restore or file modifications.',
+		parameters: Type.Object({
+			before: Type.String({ minLength: 1, description: 'Earlier local ZIP path' }),
+			after: Type.String({ minLength: 1, description: 'Later local ZIP path' }),
+			sample_limit: Type.Optional(Type.Integer({ minimum: 0, maximum: 100, description: 'Maximum ID/field-path samples per change type and resource (default 10)' })),
+		}),
+	},
+	{
+		name: 'trakt_lists',
+		command: 'lists',
+		description:
+			'Read your custom lists, including private lists accessible to your authenticated account. Returns original API metadata and pagination. Read-only; not a full account backup.',
+		parameters: Type.Object({
+			page: Type.Optional(Type.Integer({ minimum: 1, description: 'Page number (default 1)' })),
+			limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000, description: 'Items per page (default 10)' })),
+		}),
+	},
+	{
+		name: 'trakt_list_items',
+		command: 'lists',
+		subcommand: 'items',
+		description:
+			'Read one custom list by Trakt ID or slug from trakt_lists. Preserves returned rank, IDs, listed_at, notes and mixed item types. Follow pagination for complete contents. Read-only; only fields returned by the API are available.',
+		parameters: Type.Object({
+			list: Type.String({ minLength: 1, description: 'Custom list Trakt ID or slug (not its display name)' }),
+			page: Type.Optional(Type.Integer({ minimum: 1, description: 'Page number (default 1)' })),
+			limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000, description: 'Items per page (default 10)' })),
+		}),
+	},
+	{
 		name: 'trakt_watchlist',
 		command: 'watchlist',
 		description:
@@ -355,7 +401,8 @@ export default definePluginEntry({
 				parameters: tool.parameters,
 
 				async execute(_id: string, params: Record<string, unknown>) {
-					if (tool.command !== 'auth' && !isAuthConfigured()) {
+					const localComparison = tool.command === 'backup' && tool.subcommand === 'compare';
+					if (tool.command !== 'auth' && !localComparison && !isAuthConfigured()) {
 						return toolResult(
 							JSON.stringify(
 								{
@@ -380,7 +427,7 @@ export default definePluginEntry({
 						// flag so per-show progress checks don't hammer 50 API calls.
 						const { stdout } = await runCli(cliPath, args, {
 							// sync walks several services plus per-show history lookups.
-							timeout: tool.command === 'sync' ? 600_000 : 120_000,
+							timeout: ['sync', 'backup'].includes(tool.command) ? 600_000 : 120_000,
 							maxBuffer: 4 * 1024 * 1024,
 						});
 
