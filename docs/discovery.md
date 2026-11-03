@@ -26,11 +26,11 @@ GET; no dismissal, list/history changes or automatic credential-refresh replay.
   current user's own rating.
 - Pagination headers are retained. `pagination_available` means the four headers
   exist, not proof of full catalog coverage, stable ranking or recommendation
-  page support. Each call reads one response only.
+  page support. Each call reads one catalog response; genre/account lookups are additional reads.
 - Empty results are valid. Null and malformed media are refused. Duplicate IDs keep the first service-ranked occurrence.
   Service error bodies are not relayed; tool rate-limit guidance stays structured.
 - Filtering defaults off (`watched_filtered:false`). Enable exclusions explicitly
-  as below. Genre/year filters and assistant personalization remain future work;
+  as below. Metadata filters are supported below; assistant personalization remains future work;
   shortlist previews are supported, but discovery itself never writes a list.
 
 Use an exact result type/ID with the existing preview-first list tool to shortlist,
@@ -84,3 +84,51 @@ watchlist entries were removed, and original history/watchlist/list-item objects
 and order, ratings, favorites and credential bytes matched baseline. List container
 updated_at advanced from those deliberate list writes; byte-identical container
 metadata is not claimed. No production account was touched.
+
+
+## Page-local metadata criteria
+
+```sh
+trakt-cli genres --type movie --json
+trakt-cli discover popular --type movie --genres drama,thriller --year-min 2000 --year-max 2026 --runtime-min 20 --runtime-max 150 --min-rating 6 --min-votes 100 --json
+```
+
+Tool parameters are `genres`, `year_min`, `year_max`, `runtime_min`,
+`runtime_max`, `min_rating`, `min_votes`. `trakt_genres` returns current genre
+names/slugs; selected slugs are validated against that live catalog. CLI genre
+slugs are trimmed/lowercased/deduplicated. Unknown genres explicitly refuse.
+Catalog lookup is bounded to 256 KiB/200 rows and rejects malformed/null data.
+
+These criteria apply LOCALLY to the single returned page/response for every
+mode. No undocumented server query parameter is sent, no automatic page refill
+occurs, and an empty page does not mean Trakt has no matching title elsewhere.
+`metadata_filter_scope:returned_page_only` is explicit. Source pagination totals
+remain unfiltered. All selected criteria AND; genre choices OR. Ranking of
+retained titles is unchanged. Shortlists contain only the retained matches.
+
+- Year is movie catalog year or SHOW PREMIERE year, not its latest season year.
+  Bounds are inclusive, client range 1800-9999.
+- Runtime is returned minutes: movie length or show per-episode metadata, NOT
+  total series/binge length. Inclusive input bounds 1-10000 minutes; a known
+  longer runtime remains a known value, not an invented missing value.
+- Rating is the community 0-10 score, not personal taste or a user's own rating.
+  Missing/invalid/zero rating is unrated and excluded when rating is required,
+  even if the supplied minimum is zero.
+- Votes is a nonnegative integer. Explicit min_votes=0 accepts a known zero;
+  missing/null/malformed votes are still unknown and excluded.
+- Missing/null/invalid active fields, empty/unknown genre assignment and
+  zero/nonpositive runtime never silently pass. Unrequested fields do not
+  exclude a title. Invalid ranges/nonfinite scores refuse before API calls.
+
+`excluded_metadata` counts rejected unique candidates after earlier watched/
+watchlist/seen-ID exclusions. It equals `unknown_metadata + metadata_mismatches`.
+A title with any unknown active field goes in unknown_metadata, even if another
+known criterion also mismatched. `unknown_metadata_fields` counts each missing
+active field per rejected title. It can exceed the number of rejected titles.
+No hidden preferences are stored.
+
+Real test-account plugin audit retained7/20 movies and19/20 shows using genre,
+year, runtime, rating and vote criteria, matching independently filtered original
+page IDs/order. No-match and unknown-genre refusal passed live. All required
+fields in that live sample were known; missing/unrated metadata and boundaries
+remain synthetic-tested rather than fabricated live cases. No account writes.

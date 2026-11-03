@@ -191,6 +191,15 @@ unchanged. No production writes or deployment. Notes/timestamps/new ranks are no
 copied, and source note-bearing moves refuse before writes. Partial/race guards
 are synthetic-tested; no atomic cross-list transaction is claimed.
 
+## Discovery metadata criteria
+
+Implemented locally: genre lookup plus page-local genre/year/runtime/minimum
+rating/vote criteria. Nine actual test-account plugin calls passed; ordered
+results independently matched original-page audits (7/20 movies, 19/20 shows).
+No-match and unknown-genre refusal passed. Live required metadata was complete;
+missing/unrated policies remain synthetic-tested. See [discovery.md](discovery.md).
+No implicit page refill, global no-match claim, account writes or deployment.
+
 ## Next steps
 
 1. Submit/review the empty-statistics fix and the pending restore-planner,

@@ -18,6 +18,7 @@ type DiscoveryOptions struct {
 	ExcludeWatchlisted bool
 	ExcludeIDs         []string
 	Shortlist          string
+	Criteria           DiscoveryCriteria
 }
 type DiscoveryItem struct {
 	Type     string          `json:"type"`
@@ -32,21 +33,30 @@ type DiscoveryResult struct {
 	Type  string          `json:"type"`
 	Items []DiscoveryItem `json:"items"`
 	Pagination
-	PaginationAvailable bool               `json:"pagination_available"`
-	WatchedFiltered     bool               `json:"watched_filtered"`
-	WatchlistFiltered   bool               `json:"watchlist_filtered"`
-	SourceCount         int                `json:"source_count"`
-	DuplicatesRemoved   int                `json:"duplicates_removed"`
-	ExcludedWatched     int                `json:"excluded_watched"`
-	ExcludedWatchlisted int                `json:"excluded_watchlisted"`
-	ExcludedIDs         int                `json:"excluded_ids"`
-	FilterAccount       string             `json:"filter_account,omitempty"`
-	WatchedRule         string             `json:"watched_rule,omitempty"`
-	Shortlist           *ListChangePreview `json:"shortlist,omitempty"`
-	ShortlistEmpty      bool               `json:"shortlist_empty,omitempty"`
+	PaginationAvailable   bool               `json:"pagination_available"`
+	WatchedFiltered       bool               `json:"watched_filtered"`
+	WatchlistFiltered     bool               `json:"watchlist_filtered"`
+	SourceCount           int                `json:"source_count"`
+	DuplicatesRemoved     int                `json:"duplicates_removed"`
+	ExcludedWatched       int                `json:"excluded_watched"`
+	ExcludedWatchlisted   int                `json:"excluded_watchlisted"`
+	ExcludedIDs           int                `json:"excluded_ids"`
+	FilterAccount         string             `json:"filter_account,omitempty"`
+	WatchedRule           string             `json:"watched_rule,omitempty"`
+	Shortlist             *ListChangePreview `json:"shortlist,omitempty"`
+	ShortlistEmpty        bool               `json:"shortlist_empty,omitempty"`
+	MetadataFilters       *DiscoveryCriteria `json:"metadata_filters,omitempty"`
+	MetadataFilterScope   string             `json:"metadata_filter_scope,omitempty"`
+	ExcludedMetadata      int                `json:"excluded_metadata"`
+	UnknownMetadata       int                `json:"unknown_metadata"`
+	MetadataMismatches    int                `json:"metadata_mismatches"`
+	UnknownMetadataFields map[string]int     `json:"unknown_metadata_fields,omitempty"`
 }
 
 func ValidateDiscovery(o DiscoveryOptions) error {
+	if _, err := normalizeDiscoveryCriteria(o.Criteria); err != nil {
+		return err
+	}
 	if len(o.ExcludeIDs) > 10000 {
 		return fmt.Errorf("at most 10000 previously seen IDs")
 	}
@@ -89,6 +99,18 @@ func (c *APIClient) Discover(o DiscoveryOptions) (DiscoveryResult, error) {
 	result := DiscoveryResult{Mode: o.Mode, Type: o.Type, Items: []DiscoveryItem{}}
 	if err := ValidateDiscovery(o); err != nil {
 		return result, err
+	}
+	criteria, err := normalizeDiscoveryCriteria(o.Criteria)
+	if err != nil {
+		return result, err
+	}
+	if err := c.validateDiscoveryGenres(o.Type, criteria); err != nil {
+		return result, err
+	}
+	if criteria.active() {
+		result.MetadataFilters = &criteria
+		result.MetadataFilterScope = "returned_page_only"
+		result.UnknownMetadataFields = map[string]int{}
 	}
 	watched, watchlisted, owner, err := c.discoveryExclusions(o)
 	if err != nil {
@@ -150,8 +172,8 @@ func (c *APIClient) Discover(o DiscoveryOptions) (DiscoveryResult, error) {
 			}
 		}
 		var title struct {
-			Title string `json:"title"`
-			Year  *int   `json:"year"`
+			Title string          `json:"title"`
+			Year  json.RawMessage `json:"year"`
 			IDs   struct {
 				Trakt json.Number `json:"trakt"`
 			} `json:"ids"`
@@ -168,6 +190,13 @@ func (c *APIClient) Discover(o DiscoveryOptions) (DiscoveryResult, error) {
 			continue
 		}
 		seen[id] = true
+		var year *int
+		if json.Unmarshal(title.Year, &year) != nil {
+			year = nil
+		}
+		if year != nil && (*year < 1800 || *year > 9999) {
+			year = nil
+		}
 		if watched[id] {
 			result.ExcludedWatched++
 			continue
@@ -180,7 +209,19 @@ func (c *APIClient) Discover(o DiscoveryOptions) (DiscoveryResult, error) {
 			result.ExcludedIDs++
 			continue
 		}
-		result.Items = append(result.Items, DiscoveryItem{Type: o.Type, TraktID: id, Title: title.Title, Year: title.Year, Watchers: watchers, Media: media})
+		if matches, missing := matchDiscoveryMetadata(media, criteria); !matches {
+			result.ExcludedMetadata++
+			if len(missing) > 0 {
+				result.UnknownMetadata++
+				for _, field := range missing {
+					result.UnknownMetadataFields[field]++
+				}
+			} else {
+				result.MetadataMismatches++
+			}
+			continue
+		}
+		result.Items = append(result.Items, DiscoveryItem{Type: o.Type, TraktID: id, Title: title.Title, Year: year, Watchers: watchers, Media: media})
 	}
 	result.Pagination = Pagination{Page: response.Header.Get("X-Pagination-Page"), PageCount: response.Header.Get("X-Pagination-Page-Count"), Limit: response.Header.Get("X-Pagination-Limit"), ItemCount: response.Header.Get("X-Pagination-Item-Count")}
 	result.PaginationAvailable = result.Page != "" && result.PageCount != "" && result.Pagination.Limit != "" && result.ItemCount != ""

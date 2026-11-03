@@ -335,3 +335,9 @@ test('copy/move preview offline and retain partial transfer stage without replay
  try{const r=JSON.parse((await t.execute('partial',{...params,apply:true,expect_user:'sample'})).content[0].text);assert.equal(r.operation.remove_attempted,false);assert.equal(r.operation.stage,'destination_readback');assert.equal(calls.length,n+1);}finally{mutationFailure=undefined;}
  }
 });
+
+test('metadata criteria and current genre lookup are typed and read-only',async()=>{
+ const g=tools.find(x=>x.name==='trakt_genres');assert.ok(g);await g.execute('genres',{type:'movie'});assert.deepEqual(calls.at(-1).args,['genres','--type','movie','--json']);
+ const t=tools.find(x=>x.name==='trakt_discover_popular');await t.execute('criteria',{type:'movie',genres:['action','thriller'],year_min:2000,year_max:2026,runtime_max:120,min_rating:7.5,min_votes:0});assert.deepEqual(calls.at(-1).args,['discover','popular','--type','movie','--genres','action,thriller','--year-min','2000','--year-max','2026','--runtime-max','120','--min-rating','7.5','--min-votes','0','--json']);
+ const n=calls.length;await t.execute('invalid',{runtime_max:0});await t.execute('invalid',{min_rating:11});assert.equal(calls.length,n);
+});

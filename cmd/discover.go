@@ -17,6 +17,12 @@ func newDiscoverCmd() *cobra.Command {
 	c.Flags().Bool("exclude-watchlisted", false, "Exclude watchlisted movies/shows, including parent shows of episode/season entries")
 	c.Flags().StringSlice("exclude-ids", nil, "Previously seen IDs for this media type; comma-separated")
 	c.Flags().String("shortlist", "", "Prepare an offline list-add preview for remaining results; never applies")
+	c.Flags().StringSlice("genres", nil, "Match any selected Trakt genre slug; inspect with genres command")
+	for _, name := range []string{"year-min", "year-max", "runtime-min", "runtime-max"} {
+		c.Flags().Int(name, 0, "Inclusive page-local metadata bound; runtime is minutes")
+	}
+	c.Flags().Float64("min-rating", 0, "Minimum known community score (0-10); unrated excluded")
+	c.Flags().Int64("min-votes", 0, "Minimum community vote count")
 	c.RunE = func(cmd *cobra.Command, args []string) error {
 		kind, _ := cmd.Flags().GetString("type")
 		id, _ := cmd.Flags().GetString("id")
@@ -27,6 +33,21 @@ func newDiscoverCmd() *cobra.Command {
 		ids, _ := cmd.Flags().GetStringSlice("exclude-ids")
 		shortlist, _ := cmd.Flags().GetString("shortlist")
 		o := api.DiscoveryOptions{ExcludeWatched: watched, ExcludeWatchlisted: watchlisted, ExcludeIDs: ids, Shortlist: shortlist, Mode: args[0], Type: kind, ID: id, Page: page, Limit: limit}
+		o.Criteria.Genres, _ = cmd.Flags().GetStringSlice("genres")
+		for name, target := range map[string]**int{"year-min": &o.Criteria.YearMin, "year-max": &o.Criteria.YearMax, "runtime-min": &o.Criteria.RuntimeMin, "runtime-max": &o.Criteria.RuntimeMax} {
+			if cmd.Flags().Changed(name) {
+				n, _ := cmd.Flags().GetInt(name)
+				*target = &n
+			}
+		}
+		if cmd.Flags().Changed("min-rating") {
+			n, _ := cmd.Flags().GetFloat64("min-rating")
+			o.Criteria.MinRating = &n
+		}
+		if cmd.Flags().Changed("min-votes") {
+			n, _ := cmd.Flags().GetInt64("min-votes")
+			o.Criteria.MinVotes = &n
+		}
 		if err := api.ValidateDiscovery(o); err != nil {
 			return err
 		}
@@ -53,7 +74,7 @@ func newDiscoverCmd() *cobra.Command {
 			}
 		}
 		if len(r.Items) == 0 {
-			_, err = fmt.Fprintln(cmd.OutOrStdout(), "No discovery results returned.")
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), "No titles returned after this response’s filters; other pages may differ.")
 		}
 		return err
 	}

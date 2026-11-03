@@ -331,3 +331,10 @@ Readback verifies metadata and list contents/order. See
 Explicit apply/expect_user required; moves verify destination before removal.
 Membership-only: notes/dates/new ranks are not copied, and note-bearing moves
 refuse. See [verification and partial-state contract](../docs/list-transfers.md).
+
+### Discovery criteria
+
+Use `trakt_genres` for current movie/show genre slugs. Discovery tools accept
+genres/year/runtime/min_rating/min_votes criteria, applied only to the returned
+catalog page; missing active metadata is excluded and counted. See
+[criteria semantics](../docs/discovery.md). No hidden preferences or writes.
