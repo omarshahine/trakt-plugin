@@ -85,16 +85,17 @@ expected/actual counts, page counts, per-file SHA-256 checksums and `complete`.
 Records retain API fields, item ordering and individual history event IDs (including
 rewatches). Only list inventory and seen IDs, not all history pages, are held in memory.
 
-Completeness requires valid stable pagination, exact page/item counts, unique record
-IDs, matching list metadata counts, and an unchanged `/sync/last_activities` marker.
+Completeness requires valid stable page counts and page sizes, exact collected
+counts, unique record IDs, matching list metadata counts, and an unchanged
+`/sync/last_activities` marker. History totals on earlier pages can be stale:
+the collected history count must match the terminal page's reported total.
 Trakt does not provide a transactional snapshot: an unchanged activity marker is a
 consistency check, not an absolute snapshot guarantee. A changed marker fails the export.
 
 Defaults: `--limit 1000`, `--delay-ms 1000`, `--max-pages 10000` per resource.
-The first and terminal pages are probed before walking a multi-page resource, so
-inconsistent counters fail early. Backup reads request HTTP cache revalidation;
-this does not guarantee the service honors it. Missing pagination, an API error,
-changed counts, duplicate IDs, or the page cap
+Backup reads request HTTP cache revalidation; this does not guarantee the service
+honors it. Missing pagination, an API error, changed page counts or page sizes,
+unreconciled item counts, duplicate IDs, or the page cap
 stops the export. No automatic retry is made after a rate limit. Failed exports
 exit nonzero and retain available pages with `complete: false` and errors in the
 manifest when storage permits. Do not treat a partial ZIP as a complete backup.
