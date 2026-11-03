@@ -19,6 +19,8 @@ jobs:
           cache: npm
           cache-dependency-path: openclaw/package-lock.json
       - run: npm ci
+      - name: Run plugin regression tests
+        run: npm test
       - run: npx @openclaw/plugin-inspector ci --no-openclaw --runtime --mock-sdk --allow-execute
       - uses: actions/upload-artifact@v5
         if: always()
