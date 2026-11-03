@@ -503,6 +503,10 @@ equals an older website snapshot or that future website fields are covered.
 
 #### Restore planning and website import JSON (preview only)
 
+For precisely undoing a single dated watch, see
+[history-event removal](docs/history-event-removal.md). This is separate from
+backup restoration: it does not import archives or remove every play of a title.
+
 ```bash
 # Offline: supply a freshly created current-account backup.
 trakt-cli backup plan-restore --source ./desired.zip --current ./current.zip --json

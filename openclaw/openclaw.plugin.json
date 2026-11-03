@@ -54,6 +54,7 @@
       "trakt_history",
       "trakt_history_add",
       "trakt_history_remove",
+	  "trakt_history_remove_event",
       "trakt_backup",
         "trakt_backup_compare",
         "trakt_backup_plan_restore",

@@ -36,6 +36,50 @@ test('custom list tools are registered and declared in the manifest', () => {
 	assert.ok(!tools.some((tool) => tool.name === 'trakt_sync'));
 });
 
+test('single history-event removal previews offline and keeps precise IDs as literal arguments', async () => {
+	const tool = tools.find(t => t.name === 'trakt_history_remove_event');
+	const manifest = JSON.parse(readFileSync(new URL('../openclaw.plugin.json', import.meta.url)));
+	assert.ok(tool && manifest.contracts.tools.includes(tool.name));
+	assert.deepEqual(tool.parameters.required, ['history_id', 'type', 'trakt_id', 'watched_at']);
+	const params = { history_id: '9007199254740993', type: 'episode', trakt_id: '55', watched_at: '2020-01-01T00:00:00.123456789Z', expect_user: 'synthetic;literal' };
+	authConfigured = false;
+	try {
+		await tool.execute('test', params);
+		assert.deepEqual(calls.at(-1).args, ['history', 'remove-event', '--history-id', params.history_id, '--type', 'episode', '--trakt-id', '55', '--watched-at', params.watched_at, '--expect-user', params.expect_user, '--json']);
+		const count = calls.length;
+		const denied = await tool.execute('test', { ...params, apply: true });
+		assert.equal(calls.length, count);
+		assert.equal(JSON.parse(denied.content[0].text).success, false);
+	} finally { authConfigured = true; }
+	await tool.execute('test', { ...params, apply: true });
+	assert.ok(calls.at(-1).args.includes('--apply'));
+});
+
+test('uncertain history-event removal stays visible and is never replayed', async () => {
+	const tool = tools.find(t => t.name === 'trakt_history_remove_event');
+	mutationFailure = Object.assign(new Error('synthetic readback failure'), { stdout: JSON.stringify({ target: { history_id: '9007199254740993' }, outcome: 'unknown', attempted: true, verified: false }), stderr: 'readback failed; do not automatically retry' });
+	const count = calls.length;
+	try {
+		const result = await tool.execute('test', { history_id: '9007199254740993', type: 'movie', trakt_id: '55', watched_at: '2020-01-01T00:00:00Z', expect_user: 'synthetic', apply: true });
+		assert.equal(calls.length, count + 1);
+		assert.match(result.content[0].text, /unknown/);
+		assert.match(result.content[0].text, /attempted/);
+	} finally { mutationFailure = undefined; }
+});
+
+test('history-event rate limits retain whether a deletion was attempted', async () => {
+	const tool = tools.find(t => t.name === 'trakt_history_remove_event');
+	mutationFailure = Object.assign(new Error('synthetic rate limit'), { stdout: JSON.stringify({ target: { history_id: '9007199254740993' }, outcome: 'unknown', attempted: true, verified: false }), stderr: 'rate limited by trakt api: 429 (path=/sync/history/remove retry_after=60)' });
+	try {
+		const result = await tool.execute('test', { history_id: '9007199254740993', type: 'movie', trakt_id: '55', watched_at: '2020-01-01T00:00:00Z', expect_user: 'synthetic', apply: true });
+		const parsed = JSON.parse(result.content[0].text);
+		assert.equal(parsed.rate_limited, true);
+		assert.equal(parsed.retry_after_seconds, 60);
+		assert.equal(parsed.operation.attempted, true);
+		assert.equal(parsed.operation.verified, false);
+	} finally { mutationFailure = undefined; }
+});
+
 test('list discovery forwards page and limit and decodes JSON', async () => {
 	const tool = tools.find((tool) => tool.name === 'trakt_lists');
 	const result = await tool.execute('test', { page: 2, limit: 50 });

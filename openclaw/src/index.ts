@@ -78,6 +78,18 @@ function preferenceTools(): ToolDef[] {
 
 // Tool metadata — each maps to a CLI subcommand
 const TOOLS: ToolDef[] = [
+	{
+		name: 'trakt_history_remove_event', command: 'history', subcommand: 'remove-event',
+		description: 'Remove exactly one dated movie/episode watch by HISTORY EVENT ID, never all watches of a title. Default is an offline unverified preview. Require explicit user authorization, apply=true and expect_user to execute. Fresh preflight must match event ID, media type/ID and exact watched_at; success requires scoped readback showing other plays unchanged. Never automatically retry partial/uncertain results. Get string event/media IDs and full timestamp from trakt_history. Unknown-date events are unsupported.',
+		parameters: Type.Object({
+			history_id: Type.String({ pattern: '^[1-9][0-9]*$', description: 'Exact HISTORY EVENT ID as a string, not a movie/show ID' }),
+			type: Type.Union([Type.Literal('movie'), Type.Literal('episode')]),
+			trakt_id: Type.String({ pattern: '^[1-9][0-9]*$', description: 'Exact movie or episode MEDIA ID as a string; never the show ID for an episode' }),
+			watched_at: Type.String({ minLength: 1, description: 'Exact ISO8601 watch timestamp from history, including fractional seconds if present' }),
+			expect_user: Type.Optional(Type.String({ minLength: 1, description: 'Required with apply=true: freshly authenticated account slug must match' })),
+			apply: Type.Optional(Type.Boolean({ default: false })),
+		}),
+	},
 	...preferenceTools(),
 	{
 		name: 'trakt_list_create', command: 'lists', subcommand: 'create',
@@ -173,7 +185,7 @@ const TOOLS: ToolDef[] = [
 		command: 'history',
 		subcommand: 'remove',
 		description:
-			'Remove movies or shows from Trakt.tv watch history (undo a mark-as-watched). Searches by title; removing a show wipes ALL its episode plays, removing a movie wipes all its watches. There is no per-watch granular removal.',
+			'Remove movies or shows from Trakt.tv watch history (undo a mark-as-watched). Searches by title; removing a show wipes ALL its episode plays, removing a movie wipes all its watches. Use trakt_history_remove_event instead to remove one dated watch.',
 		parameters: Type.Object({
 			titles: Type.Array(Type.String(), {
 				description: 'Title(s) to remove from history',
@@ -489,7 +501,8 @@ export default definePluginEntry({
 					const localComparison = tool.command === 'backup' && (tool.subcommand === 'compare' || tool.subcommand === 'plan-restore');
 					const listPreview = tool.command === 'lists' && ['create', 'add', 'remove', 'notes', 'reorder'].includes(tool.subcommand ?? '') && params.apply !== true;
 					const preferencePreview = ['ratings', 'favorites'].includes(tool.command) && ['set', 'add', 'remove'].includes(tool.subcommand ?? '') && params.apply !== true;
-					if (tool.command !== 'auth' && !localComparison && !listPreview && !preferencePreview && !isAuthConfigured()) {
+					const historyEventPreview = tool.command === 'history' && tool.subcommand === 'remove-event' && params.apply !== true;
+					if (tool.command !== 'auth' && !localComparison && !listPreview && !preferencePreview && !historyEventPreview && !isAuthConfigured()) {
 						return toolResult(
 							JSON.stringify(
 								{
@@ -542,6 +555,13 @@ export default definePluginEntry({
 								? String((error as { stderr: unknown }).stderr).trim()
 								: '';
 						const errorOutput = stderr ? `${message}\n\nstderr: ${stderr}` : message;
+						let historyOperation: Record<string, unknown> | undefined;
+						if (tool.command === 'history' && tool.subcommand === 'remove-event' && params.apply === true && error && typeof error === 'object' && 'stdout' in error) {
+							try {
+								const operation = JSON.parse(String((error as { stdout: unknown }).stdout));
+								if (operation?.target?.history_id === params.history_id && typeof operation.attempted === 'boolean' && operation.verified === false && ['not_attempted', 'unknown'].includes(operation.outcome)) historyOperation = operation;
+							} catch { /* Keep the ordinary error; never replay an uncertain deletion. */ }
+						}
 
 						// Detect rate-limit markers emitted by the Go CLI's RateLimitError
 						// (see api/api.go). The CLI formats the error as:
@@ -561,6 +581,7 @@ export default definePluginEntry({
 									{
 										success: false,
 										rate_limited: true,
+										...(historyOperation ? { operation: historyOperation } : {}),
 										retry_after_seconds: retryAfter,
 										error:
 											'Trakt API rate-limited this request' +
@@ -574,6 +595,7 @@ export default definePluginEntry({
 							);
 						}
 
+						if (historyOperation) return toolResult(JSON.stringify({ success: false, error: errorOutput, operation: historyOperation }, null, 2));
 						// The CLI exits nonzero for partial writes, but stdout retains
 						// structured outcome/counts so callers can inspect before retrying.
 						const listWrite = tool.command === 'lists' && ['create', 'add', 'remove', 'notes', 'reorder'].includes(tool.subcommand ?? '');

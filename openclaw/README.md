@@ -34,10 +34,20 @@ Or set `TRAKT_CLI_PATH` environment variable, or configure `cliPath` in plugin s
 | `trakt_search` | Search for movies and TV shows |
 | `trakt_history` | View watch history |
 | `trakt_history_add` | Mark movies/shows as watched |
+| `trakt_history_remove_event` | Preview or explicitly remove one dated watch by string history-event ID, with account/type/media/date guards and scoped readback |
 | `trakt_watchlist` | View watchlist |
 | `trakt_progress` | Show watch progress for TV shows |
 | `trakt_auth` | Set up Trakt.tv authentication |
 | `trakt_sync` | Opt-in: import from streaming services (only when `syncEnabled`) |
+
+### Precise history-event removal
+
+For granular removal, first read the `history_id`, `trakt_id` and exact
+`watched_at` returned by `trakt_history`. `trakt_history_remove_event` defaults
+to an offline, unverified preview; an authorized apply requires `apply:true`
+and matching `expect_user`. It never falls back to all-plays removal. Inspect
+structured `operation` output after errors; do not retry uncertain deletions.
+See [the complete CLI/tool contract](../docs/history-event-removal.md).
 
 ## License
 

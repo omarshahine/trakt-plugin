@@ -98,8 +98,18 @@ Regression tests cover acceptance and refusal without the marker.
   this account. No public comments or social actions were seeded.
 - Collaborated-list metadata does not imply coverage of other owners' contents.
 - Official VIP archive retrieval and a product restore executor are not implemented.
-- Removal of an individual history event was exercised by a private API harness;
-  a dedicated granular-history-removal CLI/plugin feature remains to be built.
+- Granular history-event removal is implemented locally in the CLI and plugin.
+  Live tests removed dedicated movie/episode events, refused a wrong account and
+  wrong date, and refused a later apply of the already removed episode. Final
+  readback matched all 11 original account-history records exactly. Credentials
+  remained unchanged. Same-media repeat preservation is synthetic-tested; the
+  live test account still has multiple plays disabled.
+- The first deletion returned an uncertain result because Trakt represented an
+  empty media history with `page_count:0`. Independent readback resolved that
+  outcome without replaying the deletion. The reader now accepts only the exact
+  consistent empty-first-page case; subsequent dedicated movie and episode
+  deletions passed product readback. Null/inconsistent responses still fail.
+- The product contract and limits are in [history-event-removal.md](history-event-removal.md).
 
 ## Next steps
 

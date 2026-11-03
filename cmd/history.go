@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/briandowns/spinner"
@@ -122,6 +123,8 @@ func init() {
 // pointers so season 0 (specials) still serializes; omitempty on a plain int
 // dropped it. Movies leave both nil.
 type jsonHistItem struct {
+	HistoryID string `json:"history_id,omitempty"`
+	TraktID   string `json:"trakt_id,omitempty"`
 	Type      string `json:"type"`
 	Title     string `json:"title"`
 	Year      int    `json:"year,omitempty"`
@@ -134,13 +137,24 @@ type jsonHistItem struct {
 func historyJSONItems(resp api.UserHistory) []jsonHistItem {
 	var items []jsonHistItem
 	for _, v := range resp {
+		historyID := ""
+		if v.ID > 0 {
+			historyID = strconv.FormatInt(v.ID, 10)
+		}
 		switch v.Type {
 		case "movie":
-			items = append(items, jsonHistItem{Type: "movie", Title: v.Movie.Title, Year: v.Movie.Year, WatchedAt: v.WatchedAt.Format(time.RFC3339)})
+			items = append(items, jsonHistItem{HistoryID: historyID, TraktID: positiveMediaID(v.Movie.Ids.Trakt), Type: "movie", Title: v.Movie.Title, Year: v.Movie.Year, WatchedAt: v.WatchedAt.Format(time.RFC3339Nano)})
 		case "episode":
 			season, number := v.Episode.Season, v.Episode.Number
-			items = append(items, jsonHistItem{Type: "episode", Title: v.Episode.Title, Season: &season, Episode: &number, ShowTitle: v.Show.Title, WatchedAt: v.WatchedAt.Format(time.RFC3339)})
+			items = append(items, jsonHistItem{HistoryID: historyID, TraktID: positiveMediaID(v.Episode.Ids.Trakt), Type: "episode", Title: v.Episode.Title, Season: &season, Episode: &number, ShowTitle: v.Show.Title, WatchedAt: v.WatchedAt.Format(time.RFC3339Nano)})
 		}
 	}
 	return items
+}
+
+func positiveMediaID(id int) string {
+	if id <= 0 {
+		return ""
+	}
+	return strconv.Itoa(id)
 }
