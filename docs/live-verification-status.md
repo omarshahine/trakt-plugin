@@ -162,6 +162,14 @@ history/watchlist entries were removed; original list items/history/watchlist,
 ratings/favorites and credential bytes were unchanged. Container updated_at
 advanced as expected. Discovery itself never applies list writes.
 
+## Title/season/episode browsing
+
+Implemented locally in CLI and four tools; see [title-browsing.md](title-browsing.md).
+Eight real test-account plugin reads passed: movie/show details, season lists,
+regular episode list/details and season-0 specials list/details (306 specials).
+Aired classification passed live; future/unknown/boundary/offset semantics are
+synthetic-tested, not positive live claims. No account writes or credential changes.
+
 ## Next steps
 
 1. Submit/review the empty-statistics fix and the pending restore-planner,

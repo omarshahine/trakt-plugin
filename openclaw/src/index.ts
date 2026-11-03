@@ -79,6 +79,10 @@ function preferenceTools(): ToolDef[] {
 
 // Tool metadata — each maps to a CLI subcommand
 const TOOLS: ToolDef[] = [
+ ...[{name:'trakt_title_details',mode:'details'},{name:'trakt_show_seasons',mode:'seasons'},{name:'trakt_season_episodes',mode:'episodes'},{name:'trakt_episode_details',mode:'episode'}].map(({name,mode})=>({name,command:'titles',subcommand:mode,
+ description:'Read full returned title/season/episode metadata using an exact Trakt MOVIE/SHOW ID. Read-only, no account changes. Season 0 includes specials. Episode air_status uses first_aired relative to as_of: aired/upcoming/unknown; null, missing or invalid dates are unknown, not assumed future. Broadcast time is not watched state or regional streaming availability. Returned ratings are Trakt ratings, not personal scores.',
+ parameters:Type.Object({id:Type.String({pattern:'^[1-9][0-9]*$'}),...(mode==='details'?{type:Type.Optional(Type.Union([Type.Literal('movie'),Type.Literal('show')],{default:'show'}))}:{}),...(['episodes','episode'].includes(mode)?{season:Type.Integer({minimum:0,maximum:10000})}:{}),...(mode==='episode'?{episode:Type.Integer({minimum:0,maximum:10000})}:{})})})),
+
  ...['trending','popular','recommendations','related'].map(mode=>({
  name:`trakt_discover_${mode}`,command:'discover',subcommand:mode,
  description:`Read ${mode} movies/shows from Trakt in service ranking order with full returned metadata and exact string Trakt IDs. Read-only, one page/response; optional complete-history/watchlist exclusion. One episode excludes its show. exclude_ids removes previously seen IDs of this media type. shortlist returns only a list-add preview, never writes; apply later with existing list tool after authorization. Requires configured Trakt login. Recommendations reflect that login, not inferred personal taste. Filtering does not refill pages or change service ranking; no automatic list writes. Related requires exact movie/show media ID. Recommendations has limit only, no page navigation.`,

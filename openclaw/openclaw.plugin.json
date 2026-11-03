@@ -51,6 +51,10 @@
   "contracts": {
     "tools": [
       "trakt_search",
+      "trakt_title_details",
+      "trakt_show_seasons",
+      "trakt_season_episodes",
+      "trakt_episode_details",
       "trakt_discover_trending",
       "trakt_discover_popular",
       "trakt_discover_recommendations",

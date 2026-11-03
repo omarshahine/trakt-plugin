@@ -612,3 +612,5 @@ Collection restore planning (offline only): [contract and live evidence](docs/co
 Missing-only collection restore executor: [contract and live acceptance](docs/collection-restore.md).
 
 Discovery: trending/popular movies and shows, related titles and account recommendations are available through `discover`. See [commands and limits](docs/discovery.md).
+
+Title details and season/episode browsing: [commands and date semantics](docs/title-browsing.md).

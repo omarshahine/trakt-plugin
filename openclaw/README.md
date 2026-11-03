@@ -309,3 +309,10 @@ recommendations belong to the configured login and may be empty. No watched
 filter or list writes implied. See [scope and acceptance](../docs/discovery.md).
 
 Discovery optionally supports `exclude_watched`, `exclude_watchlisted`, `exclude_ids` and `shortlist` (preview only). See [filter semantics](../docs/discovery.md) and [maintained-fork deployment path](../docs/maintained-fork.md).
+
+### Title and episode browsing
+
+`trakt_title_details`, `trakt_show_seasons`, `trakt_season_episodes` and
+`trakt_episode_details` retain full returned metadata. Season 0 supports specials;
+air_status is aired/upcoming/unknown relative to as_of, never a claim of watched
+state or streaming availability. See [commands and scope](../docs/title-browsing.md).

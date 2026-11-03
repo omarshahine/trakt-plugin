@@ -308,3 +308,13 @@ test('discovery exclusion flags and shortlist preview forward literally; no appl
  assert.deepEqual(calls.at(-1).args,['discover','popular','--type','show','--exclude-watched','--exclude-watchlisted','--exclude-ids','55,9007199254740993','--shortlist','synthetic;list','--json']);
  const n=calls.length;await t.execute('bad',{exclude_ids:['../settings']});assert.equal(calls.length,n);
 });
+
+test('title browsing tools retain exact IDs, specials and closed read-only parameters',async()=>{
+ const manifest=JSON.parse(readFileSync(new URL('../openclaw.plugin.json',import.meta.url)));
+ for(const [name,mode,params] of [['trakt_title_details','details',{id:'9007199254740993',type:'movie'}],['trakt_show_seasons','seasons',{id:'55'}],['trakt_season_episodes','episodes',{id:'55',season:0}],['trakt_episode_details','episode',{id:'55',season:0,episode:0}]]){
+ const t=tools.find(x=>x.name===name);assert.ok(t && manifest.contracts.tools.includes(name));await t.execute('browse',params);
+ const expected=['titles',mode,'--id',params.id,...(params.type?['--type',params.type]:[]),...('season' in params?['--season',String(params.season)]:[]),...('episode' in params?['--episode',String(params.episode)]:[]),'--json'];assert.deepEqual(calls.at(-1).args,expected);
+ const n=calls.length;await t.execute('bad',{...params,apply:true});assert.equal(calls.length,n);
+ }
+ const t=tools.find(x=>x.name==='trakt_season_episodes');const n=calls.length;await t.execute('bad',{id:'55'});await t.execute('bad',{id:'55',season:-1});assert.equal(calls.length,n);
+});
