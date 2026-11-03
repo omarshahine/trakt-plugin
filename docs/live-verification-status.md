@@ -200,6 +200,16 @@ No-match and unknown-genre refusal passed. Live required metadata was complete;
 missing/unrated policies remain synthetic-tested. See [discovery.md](discovery.md).
 No implicit page refill, global no-match claim, account writes or deployment.
 
+## Bounded watch-tonight shortlists
+
+Implemented locally: `shortlist` and `trakt_watch_tonight`; see
+[watch-tonight.md](watch-tonight.md). Eight actual test-account plugin cases
+passed, including movie5 across5 pages and show3 across2, budget/no-match stops,
+recommendations single-response, exclusion opt-out, related and trending.
+Factual predicates, unique IDs and unapplied preview independently checked.
+No account writes/credential changes. Partial network/pagination/activity failures
+are synthetic-tested; no global completeness, availability or taste claim.
+
 ## Next steps
 
 1. Submit/review the empty-statistics fix and the pending restore-planner,

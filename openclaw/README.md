@@ -338,3 +338,11 @@ Use `trakt_genres` for current movie/show genre slugs. Discovery tools accept
 genres/year/runtime/min_rating/min_votes criteria, applied only to the returned
 catalog page; missing active metadata is excluded and counted. See
 [criteria semantics](../docs/discovery.md). No hidden preferences or writes.
+
+### Watch tonight
+
+`trakt_watch_tonight` collects a requested count across bounded source pages,
+reusing metadata criteria and default-on watched/watchlist exclusions. Factual
+explanations are metadata/snapshot evidence, not inferred taste or availability.
+Optional list target produces an unapplied preview only. See
+[limits, partial results and live evidence](../docs/watch-tonight.md).

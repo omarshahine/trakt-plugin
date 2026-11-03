@@ -341,3 +341,10 @@ test('metadata criteria and current genre lookup are typed and read-only',async(
  const t=tools.find(x=>x.name==='trakt_discover_popular');await t.execute('criteria',{type:'movie',genres:['action','thriller'],year_min:2000,year_max:2026,runtime_max:120,min_rating:7.5,min_votes:0});assert.deepEqual(calls.at(-1).args,['discover','popular','--type','movie','--genres','action,thriller','--year-min','2000','--year-max','2026','--runtime-max','120','--min-rating','7.5','--min-votes','0','--json']);
  const n=calls.length;await t.execute('invalid',{runtime_max:0});await t.execute('invalid',{min_rating:11});assert.equal(calls.length,n);
 });
+
+test('watch-tonight preserves explicit exclusion opt-out and has no apply mode',async()=>{
+ const t=tools.find(x=>x.name==='trakt_watch_tonight');assert.ok(t);await t.execute('shortlist',{type:'movie',count:5,max_pages:3,limit:10,exclude_watched:false,exclude_watchlisted:false,min_rating:7});assert.deepEqual(calls.at(-1).args,['shortlist','--type','movie','--count','5','--max-pages','3','--limit','10','--exclude-watched=false','--exclude-watchlisted=false','--min-rating','7','--json']);const n=calls.length;await t.execute('bad',{count:51});await t.execute('bad',{apply:true});assert.equal(calls.length,n);
+});
+test('partial shortlist matches and rate-limit stop remain visible without replay',async()=>{
+ const t=tools.find(x=>x.name==='trakt_watch_tonight');for(const limited of [false,true]){const n=calls.length;mutationFailure=Object.assign(new Error(limited?'rate limited by trakt api: 429 (retry_after=60)':'scan failed'),{stdout:JSON.stringify({kind:'watch_tonight',scan_succeeded:false,stop_reason:'request_failed',items:[{trakt_id:'55'}]}),stderr:'scan stopped'});try{const r=JSON.parse((await t.execute('partial',{})).content[0].text);assert.equal(r.operation.items[0].trakt_id,'55');assert.equal(r.operation.scan_succeeded,false);assert.equal(calls.length,n+1);if(limited){assert.equal(r.rate_limited,true);assert.equal(r.retry_after_seconds,60)}}finally{mutationFailure=undefined;}}
+});

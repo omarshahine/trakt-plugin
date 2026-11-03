@@ -77,8 +77,13 @@ function preferenceTools(): ToolDef[] {
 	return result;
 }
 
-// Tool metadata — each maps to a CLI subcommand
+function discoveryParameters(mode:string){return Type.Object({genres:Type.Optional(Type.Array(Type.String({pattern:'^[a-zA-Z][a-zA-Z0-9-]{0,63}$'}),{maxItems:50})),year_min:Type.Optional(Type.Integer({minimum:1800,maximum:9999})),year_max:Type.Optional(Type.Integer({minimum:1800,maximum:9999})),runtime_min:Type.Optional(Type.Integer({minimum:1,maximum:10000})),runtime_max:Type.Optional(Type.Integer({minimum:1,maximum:10000})),min_rating:Type.Optional(Type.Number({minimum:0,maximum:10})),min_votes:Type.Optional(Type.Integer({minimum:0,maximum:9007199254740991})),exclude_watched:Type.Optional(Type.Boolean({default:false})),exclude_watchlisted:Type.Optional(Type.Boolean({default:false})),exclude_ids:Type.Optional(Type.Array(Type.String({pattern:'^[1-9][0-9]*$'}),{maxItems:10000})),shortlist:Type.Optional(Type.String({minLength:1})),type:Type.Optional(Type.Union([Type.Literal('movie'),Type.Literal('show')],{default:'show'})),limit:Type.Optional(Type.Integer({minimum:1,maximum:100,default:10})),...(mode==='related'?{id:Type.String({pattern:'^[1-9][0-9]*$'})}:{}),...(mode==='recommendations'?{}:{page:Type.Optional(Type.Integer({minimum:1,default:1}))})})}
+
+// Tool metadata â€” each maps to a CLI subcommand
 const TOOLS: ToolDef[] = [
+ {name:'trakt_watch_tonight',command:'shortlist',description:'Build a read-only bounded multi-page movie/show shortlist. Count 1-50, max_pages 1-20, limit per page 1-100; stops at count, budget, reported end or missing pagination. Watched/watchlist exclusions default TRUE and are loaded once and activity-checked; explicit false opts out. Genre/year/runtime/rating/vote filters and cross-page dedup preserve first-seen service order. Factual-fit explanations are metadata/snapshot evidence, not inferred taste or availability. Recommendations reads one response only. Partial failures retain items and stop reason; never auto-retry rate limits. Optional shortlist prepares list-add preview ONLY; no writes or whole-catalog completeness claim.',
+ parameters:Type.Object({...discoveryParameters('popular').properties,id:Type.Optional(Type.String({pattern:'^[1-9][0-9]*$'})),mode:Type.Optional(Type.Union(['popular','trending','related','recommendations'].map(x=>Type.Literal(x)),{default:'popular'})),count:Type.Optional(Type.Integer({minimum:1,maximum:50,default:5})),max_pages:Type.Optional(Type.Integer({minimum:1,maximum:20,default:5})),limit:Type.Optional(Type.Integer({minimum:1,maximum:100,default:20})),exclude_watched:Type.Optional(Type.Boolean({default:true})),exclude_watchlisted:Type.Optional(Type.Boolean({default:true}))})},
+
  {name:'trakt_genres',command:'genres',description:'Read current Trakt genre names/slugs for movie or show discovery. Read-only; use returned slugs with genres filters. Requires configured login.',parameters:Type.Object({type:Type.Optional(Type.Union([Type.Literal('movie'),Type.Literal('show')],{default:'show'}))})},
 
  ...['copy','move'].map(action=>({name:`trakt_list_${action}`,command:'lists',subcommand:action,
@@ -96,7 +101,7 @@ const TOOLS: ToolDef[] = [
  ...['trending','popular','recommendations','related'].map(mode=>({
  name:`trakt_discover_${mode}`,command:'discover',subcommand:mode,
  description:`Read ${mode} movies/shows from Trakt in service ranking order with full returned metadata and exact string Trakt IDs. Read-only, one page/response; optional complete-history/watchlist exclusion. One episode excludes its show. exclude_ids removes previously seen IDs of this media type. shortlist returns only a list-add preview, never writes; apply later with existing list tool after authorization. Requires configured Trakt login. Recommendations reflect that login, not inferred personal taste. Metadata filters (genres/year/runtime/min_rating/min_votes) apply LOCALLY to this returned page only; all criteria AND, genre choices OR, missing/unrated active fields excluded and counted. Genres use trakt_genres. Show year is premiere year, runtime is per-episode metadata, not total series length. Filtering never refills pages or changes service ranking; no automatic list writes. Related requires exact movie/show media ID. Recommendations has limit only, no page navigation.`,
- parameters:Type.Object({genres:Type.Optional(Type.Array(Type.String({pattern:'^[a-zA-Z][a-zA-Z0-9-]{0,63}$'}),{maxItems:50})),year_min:Type.Optional(Type.Integer({minimum:1800,maximum:9999})),year_max:Type.Optional(Type.Integer({minimum:1800,maximum:9999})),runtime_min:Type.Optional(Type.Integer({minimum:1,maximum:10000})),runtime_max:Type.Optional(Type.Integer({minimum:1,maximum:10000})),min_rating:Type.Optional(Type.Number({minimum:0,maximum:10})),min_votes:Type.Optional(Type.Integer({minimum:0,maximum:9007199254740991})),exclude_watched:Type.Optional(Type.Boolean({default:false})),exclude_watchlisted:Type.Optional(Type.Boolean({default:false})),exclude_ids:Type.Optional(Type.Array(Type.String({pattern:'^[1-9][0-9]*$'}),{maxItems:10000})),shortlist:Type.Optional(Type.String({minLength:1})),type:Type.Optional(Type.Union([Type.Literal('movie'),Type.Literal('show')],{default:'show'})),limit:Type.Optional(Type.Integer({minimum:1,maximum:100,default:10})),...(mode==='related'?{id:Type.String({pattern:'^[1-9][0-9]*$'})}:{}),...(mode==='recommendations'?{}:{page:Type.Optional(Type.Integer({minimum:1,default:1}))})})
+ parameters:discoveryParameters(mode)
  })),
 
  {name:'trakt_backup_plan_collection', command:'backup', subcommand:'plan-collection',
@@ -366,7 +371,7 @@ const TOOLS: ToolDef[] = [
 		name: 'trakt_calendar',
 		command: 'calendar',
 		description:
-			'Show upcoming episodes of shows you watch. Returns forward-looking airings within a date window. Use for proactive "what airs next?" workflows — this is the only trakt tool that returns future data.',
+			'Show upcoming episodes of shows you watch. Returns forward-looking airings within a date window. Use for proactive "what airs next?" workflows â€” this is the only trakt tool that returns future data.',
 		parameters: Type.Object({
 			days: Type.Optional(
 				Type.Number({ description: 'Number of days to look ahead (default 7)' })
@@ -482,6 +487,7 @@ function buildCliArgs(
 	if (Array.isArray(params.titles)) positionals.push(...(params.titles as string[]));
 
 	for (const [key, value] of Object.entries(params)) {
+		if (command==='shortlist' && value===false && ['exclude_watched','exclude_watchlisted'].includes(key)){args.push(`--${key.replace(/_/g,'-')}=false`);continue;}
 		if (key === 'query' || key === 'titles' || value === undefined || value === false) continue;
 		const flag = `--${key.replace(/_/g, '-')}`;
 		if (value === true) args.push(flag);
@@ -587,7 +593,7 @@ export default definePluginEntry({
 		try {
 			cliPath = resolveCliPath(config);
 		} catch (error) {
-			// Defer error to tool execution time — plugin still loads
+			// Defer error to tool execution time â€” plugin still loads
 			const errorMessage = error instanceof Error ? error.message : String(error);
 
 			for (const tool of tools) {
@@ -647,7 +653,7 @@ export default definePluginEntry({
 						const args = buildCliArgs(tool.command, tool.subcommand, params);
 						const env = tool.command === 'auth' ? authEnvironment(config) : undefined;
 						// 30s was too tight for `progress`, which iterates ~50 API calls
-						// (watchlist + watched + N× GetShowProgress) and empirically runs
+						// (watchlist + watched + NÃ— GetShowProgress) and empirically runs
 						// 35-45s for users with substantial watch history. 120s gives
 						// generous headroom. maxBuffer bumped to 4MB to fit the full
 						// progress --all response (completed + in_progress + not_started).
@@ -687,7 +693,9 @@ export default definePluginEntry({
 								? String((error as { stderr: unknown }).stderr).trim()
 								: '';
 						const errorOutput = stderr ? `${message}\n\nstderr: ${stderr}` : message;
-						let historyOperation: Record<string, unknown> | undefined;
+						let shortlistOperation: Record<string, unknown> | undefined;
+ if(tool.command==='shortlist' && error && typeof error==='object' && 'stdout' in error){try{const op=JSON.parse(String((error as {stdout:unknown}).stdout));if(op?.kind==='watch_tonight' && op.scan_succeeded===false && Array.isArray(op.items) && typeof op.stop_reason==='string')shortlistOperation=op;}catch{/* Keep ordinary diagnostics; never replay a scan automatically. */}}
+ let historyOperation: Record<string, unknown> | undefined;
 						let ratingRestoreOperation: Record<string, unknown> | undefined;
 						if (tool.command === 'backup' && ['restore-ratings', 'restore-favorites', 'restore-collections'].includes(tool.subcommand ?? '') && params.apply === true && error && typeof error === 'object' && 'stdout' in error) {
 							try {
@@ -720,12 +728,12 @@ export default definePluginEntry({
 									{
 										success: false,
 										rate_limited: true,
-										...(historyOperation || ratingRestoreOperation ? { operation: historyOperation ?? ratingRestoreOperation } : {}),
+										...(historyOperation || ratingRestoreOperation || shortlistOperation ? { operation: historyOperation ?? ratingRestoreOperation ?? shortlistOperation } : {}),
 										retry_after_seconds: retryAfter,
 										error:
 											'Trakt API rate-limited this request' +
 											(retryAfter != null ? ` (retry after ~${retryAfter}s)` : '') +
-											'. Do NOT retry immediately — wait out the window before calling any trakt_* tool again, and avoid falling back to other trakt tools (they share the same rate limit bucket).',
+											'. Do NOT retry immediately â€” wait out the window before calling any trakt_* tool again, and avoid falling back to other trakt tools (they share the same rate limit bucket).',
 										raw: errorOutput,
 									},
 									null,
@@ -734,6 +742,7 @@ export default definePluginEntry({
 							);
 						}
 
+						if(shortlistOperation) return toolResult(JSON.stringify({success:false,error:errorOutput,operation:shortlistOperation},null,2));
 						if (historyOperation) return toolResult(JSON.stringify({ success: false, error: errorOutput, operation: historyOperation }, null, 2));
 						if (ratingRestoreOperation) return toolResult(JSON.stringify({ success: false, error: errorOutput, operation: ratingRestoreOperation }, null, 2));
 						// The CLI exits nonzero for partial writes, but stdout retains

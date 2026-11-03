@@ -620,3 +620,5 @@ List renaming, description and privacy updates: [explicit-field previews and ver
 Verified selected-membership list copy/move: [preview, verification and limits](docs/list-transfers.md).
 
 Discovery now supports explicit page-local genre/year/runtime/rating/vote criteria and current genre lookup. See [filter scope and missing-data policy](docs/discovery.md).
+
+Bounded watch-tonight shortlists: [multi-page collection, factual fit and stop reasons](docs/watch-tonight.md).

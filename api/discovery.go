@@ -95,26 +95,43 @@ func ValidateDiscovery(o DiscoveryOptions) error {
 
 // Discover reads one ranked response. Optional exclusions require complete,
 // activity-bounded account reads. It never applies a shortlist mutation.
-func (c *APIClient) Discover(o DiscoveryOptions) (DiscoveryResult, error) {
-	result := DiscoveryResult{Mode: o.Mode, Type: o.Type, Items: []DiscoveryItem{}}
+type discoveryContext struct {
+	criteria                   DiscoveryCriteria
+	watched, watchlisted, seen map[string]bool
+	owner                      string
+}
+
+func (c *APIClient) prepareDiscovery(o DiscoveryOptions) (*discoveryContext, error) {
 	if err := ValidateDiscovery(o); err != nil {
-		return result, err
+		return nil, err
 	}
 	criteria, err := normalizeDiscoveryCriteria(o.Criteria)
 	if err != nil {
-		return result, err
+		return nil, err
 	}
 	if err := c.validateDiscoveryGenres(o.Type, criteria); err != nil {
-		return result, err
+		return nil, err
 	}
+	watched, watchlisted, owner, err := c.discoveryExclusions(o)
+	if err != nil {
+		return nil, fmt.Errorf("discovery exclusions unavailable; no partially filtered results: %w", err)
+	}
+	return &discoveryContext{criteria: criteria, watched: watched, watchlisted: watchlisted, seen: map[string]bool{}, owner: owner}, nil
+}
+func (c *APIClient) Discover(o DiscoveryOptions) (DiscoveryResult, error) {
+	ctx, err := c.prepareDiscovery(o)
+	if err != nil {
+		return DiscoveryResult{Mode: o.Mode, Type: o.Type, Items: []DiscoveryItem{}}, err
+	}
+	return c.discoverPrepared(o, ctx)
+}
+func (c *APIClient) discoverPrepared(o DiscoveryOptions, ctx *discoveryContext) (DiscoveryResult, error) {
+	result := DiscoveryResult{Mode: o.Mode, Type: o.Type, Items: []DiscoveryItem{}}
+	criteria, watched, watchlisted, owner := ctx.criteria, ctx.watched, ctx.watchlisted, ctx.owner
 	if criteria.active() {
 		result.MetadataFilters = &criteria
 		result.MetadataFilterScope = "returned_page_only"
 		result.UnknownMetadataFields = map[string]int{}
-	}
-	watched, watchlisted, owner, err := c.discoveryExclusions(o)
-	if err != nil {
-		return result, fmt.Errorf("discovery exclusions unavailable; no partially filtered results: %w", err)
 	}
 	result.WatchedFiltered = o.ExcludeWatched
 	result.WatchlistFiltered = o.ExcludeWatchlisted
@@ -154,8 +171,11 @@ func (c *APIClient) Discover(o DiscoveryOptions) (DiscoveryResult, error) {
 	if json.Unmarshal(data, &rows) != nil || rows == nil {
 		return result, fmt.Errorf("discovery response must be an array, not null")
 	}
+	if len(rows) > o.Limit {
+		return result, fmt.Errorf("catalog response exceeded requested page bound")
+	}
 	result.SourceCount = len(rows)
-	seen := map[string]bool{}
+	seen := ctx.seen
 	for _, raw := range rows {
 		media := raw
 		var watchers *int64
