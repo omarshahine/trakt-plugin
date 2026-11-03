@@ -19,6 +19,7 @@ import (
 type Source interface {
 	GetBackupPage(string, string, string, api.PaginationsParams) ([]json.RawMessage, api.Pagination, error)
 	GetBackupActivity() (json.RawMessage, error)
+	GetBackupDocument(string, string) (json.RawMessage, error)
 }
 
 type Options struct {
@@ -77,8 +78,8 @@ func Export(source Source, o Options) (m Manifest, err error) {
 	if err != nil {
 		return m, err
 	}
-	m = Manifest{Version: 1, StartedAt: time.Now().UTC(), Scopes: []string{"history", "watchlist", "custom_lists", "ratings", "collections", "favorites"},
-		Excluded:    []string{"comments", "notes_outside_lists", "hidden_items", "settings", "social", "collaborated_lists_owned_by_others"},
+	m = Manifest{Version: 1, StartedAt: time.Now().UTC(), Scopes: []string{"history", "watchlist", "custom_lists", "ratings", "collections", "favorites", "account_snapshots", "saved_filters", "playback", "watched_summaries", "hidden_items", "comments_including_replies", "notes", "social", "likes", "collaborated_list_metadata"},
+		Excluded:    []string{"collaborated_list_contents_owned_by_others", "website_fields_not_returned_by_api"},
 		Consistency: "unverified", Files: []File{}, Resources: []Resource{}, Errors: []string{}}
 	x := exporter{source: source, options: o, zip: zip.NewWriter(f), manifest: &m}
 	workErr := x.run()
@@ -123,7 +124,20 @@ func (x *exporter) run() error {
 	if err != nil {
 		return fmt.Errorf("initial activity marker: %w", err)
 	}
-	for _, resource := range []string{"history", "watchlist", "ratings/movies", "ratings/shows", "ratings/seasons", "ratings/episodes", "collection/movies", "collection/shows", "collection/episodes", "favorites"} {
+	if err := x.document("user/last_activities", before); err != nil {
+		return err
+	}
+	for _, resource := range []string{"user/settings", "user/profile", "user/stats"} {
+		x.wait()
+		data, err := x.source.GetBackupDocument(x.options.User, resource)
+		if err != nil {
+			return fmt.Errorf("%s: %w", resource, err)
+		}
+		if err := x.document(resource, data); err != nil {
+			return err
+		}
+	}
+	for _, resource := range pageResources {
 		if _, err := x.collect(resource, "", -1); err != nil {
 			return err
 		}
@@ -156,6 +170,38 @@ func (x *exporter) run() error {
 		return fmt.Errorf("account activity changed during export; retry for a stable backup")
 	}
 	x.manifest.Consistency = "activity_marker_unchanged"
+	return nil
+}
+
+var pageResources = []string{
+	"history", "watchlist", "ratings/movies", "ratings/shows", "ratings/seasons", "ratings/episodes", "collection/movies", "collection/shows", "collection/episodes", "favorites",
+	"playback", "watched/movies", "watched/shows", "hidden/calendar", "hidden/progress_watched", "hidden/progress_watched_reset", "hidden/progress_collected", "hidden/recommendations",
+	"comments/movies", "comments/shows", "comments/seasons", "comments/episodes", "comments/lists",
+	"notes/movies", "notes/shows", "notes/seasons", "notes/episodes", "notes/people", "notes/activities", "notes/collection_items", "notes/ratings",
+	"network/requests", "network/followers", "network/following", "network/friends", "likes/comments", "likes/lists", "saved_filters", "collaborations",
+}
+
+func (x *exporter) document(name string, raw json.RawMessage) error {
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &object); err != nil || len(object) == 0 {
+		return fmt.Errorf("%s: snapshot must be a nonempty object", name)
+	}
+	data, err := json.MarshalIndent(object, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	path := name + ".json"
+	w, err := x.zip.Create(path)
+	if err != nil {
+		return err
+	}
+	if _, err = w.Write(data); err != nil {
+		return err
+	}
+	digest := sha256.Sum256(data)
+	x.manifest.Files = append(x.manifest.Files, File{Path: path, Records: 1, SHA256: hex.EncodeToString(digest[:])})
+	x.manifest.Resources = append(x.manifest.Resources, Resource{Name: name, Expected: 1, Records: 1, Pages: 1, Complete: true})
 	return nil
 }
 
@@ -275,7 +321,7 @@ func recordIdentity(resource string, raw json.RawMessage) (string, error) {
 		return "", err
 	}
 	identity := record["id"]
-	if resource == "lists" {
+	if resource == "lists" || resource == "collaborations" {
 		var ids struct {
 			Trakt json.Number `json:"trakt"`
 		}
@@ -283,7 +329,7 @@ func recordIdentity(resource string, raw json.RawMessage) (string, error) {
 			return "", err
 		}
 		identity = json.RawMessage(ids.Trakt.String())
-	} else if strings.HasPrefix(resource, "ratings/") || strings.HasPrefix(resource, "collection/") {
+	} else if strings.HasPrefix(resource, "ratings/") || strings.HasPrefix(resource, "collection/") || strings.HasPrefix(resource, "watched/") {
 		mediaType := strings.TrimSuffix(strings.SplitN(resource, "/", 2)[1], "s")
 		var media struct {
 			IDs struct {
@@ -294,7 +340,68 @@ func recordIdentity(resource string, raw json.RawMessage) (string, error) {
 			return "", err
 		}
 		identity = json.RawMessage(media.IDs.Trakt.String())
+	} else if strings.HasPrefix(resource, "hidden/") {
+		var kind string
+		if err := json.Unmarshal(record["type"], &kind); err != nil {
+			return "", err
+		}
+		if kind != "movie" && kind != "show" && kind != "season" {
+			return "", fmt.Errorf("unsupported hidden item type")
+		}
+		var media struct {
+			IDs struct {
+				Trakt json.Number `json:"trakt"`
+			} `json:"ids"`
+		}
+		if err := json.Unmarshal(record[kind], &media); err != nil {
+			return "", err
+		}
+		id, err := positiveIdentity(json.RawMessage(media.IDs.Trakt.String()))
+		if err != nil {
+			return "", err
+		}
+		return kind + ":" + id, nil
+	} else if strings.HasPrefix(resource, "comments/") || resource == "likes/comments" {
+		var comment struct {
+			ID json.Number `json:"id"`
+		}
+		if err := json.Unmarshal(record["comment"], &comment); err != nil {
+			return "", err
+		}
+		identity = json.RawMessage(comment.ID.String())
+	} else if resource == "likes/lists" {
+		var list struct {
+			ID  json.Number `json:"id"`
+			IDs struct {
+				Trakt json.Number `json:"trakt"`
+			} `json:"ids"`
+		}
+		if err := json.Unmarshal(record["list"], &list); err != nil {
+			return "", err
+		}
+		id := list.IDs.Trakt.String()
+		if id == "" {
+			id = list.ID.String()
+		}
+		identity = json.RawMessage(id)
+	} else if strings.HasPrefix(resource, "network/") && resource != "network/requests" {
+		var user struct {
+			IDs struct {
+				Slug string `json:"slug"`
+			} `json:"ids"`
+		}
+		if err := json.Unmarshal(record["user"], &user); err != nil {
+			return "", err
+		}
+		if strings.TrimSpace(user.IDs.Slug) == "" {
+			return "", fmt.Errorf("missing user slug")
+		}
+		return user.IDs.Slug, nil
 	}
+	return positiveIdentity(identity)
+}
+
+func positiveIdentity(identity json.RawMessage) (string, error) {
 	var id json.Number
 	if err := json.Unmarshal(identity, &id); err != nil {
 		return "", err
@@ -303,5 +410,5 @@ func recordIdentity(resource string, raw json.RawMessage) (string, error) {
 	if err != nil || n <= 0 {
 		return "", fmt.Errorf("invalid positive record ID")
 	}
-	return id.String(), nil
+	return strconv.FormatInt(n, 10), nil
 }

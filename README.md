@@ -316,6 +316,10 @@ trakt-cli backup --output ./trakt-backup.zip --json
 Creates a **new** ZIP with every page of history, watchlist, custom-list metadata,
 each owned custom list's contents, movie/show/season/episode ratings,
 movie/show/episode collections, and mixed movie/show favorites.
+Also includes playback progress, watched movie/show summaries, hidden calendar/
+progress/reset/recommendation items, comments including replies, all eight
+website note categories, follow requests/followers/following/friends, liked
+comments/lists, saved filters, and collaborated-list metadata.
 Collections request `extended=metadata` and retain returned collection timestamps,
 technical metadata, and nested season/episode data. Reuses the current login; does not change
 Trakt or include OAuth credentials. Existing output files are never overwritten.
@@ -345,9 +349,21 @@ Ratings and collections are identified by the corresponding media's Trakt ID,
 not its parent show's ID. Their pagination totals remain strict; history's
 terminal-count reconciliation does not silently relax other categories.
 
-This is **not** the website's full export or a restore feature. Comments, notes
-outside lists, hidden items, settings, social data and collaborated lists owned
-by others remain explicitly excluded.
+Raw account settings (including browsing/sharing), the full/VIP profile, statistics
+and the initial activity snapshot are stored as JSON objects under `user/`.
+Other resources remain raw paginated arrays. Follow requests are the sole
+explicitly unpaginated array endpoint; unexpected pagination there fails safely.
+Missing headers on other array resources still fail rather than imply completeness.
+
+This targets the categories in a website account export, but does **not** promise
+byte-identical files, future website categories, or fields the API does not return.
+Only collaborated-list metadata is included, not contents owned by other users.
+There is no restore support. `complete` means the declared API scope passed all
+checks, not a guarantee of website-field parity or a transactional snapshot.
+For example, third-party API responses can omit the account email, date of birth,
+and numeric user Trakt ID even when the website export contains them. These fields
+are not fabricated or recovered from an older export. Likewise, playback entries
+no longer returned by the live API are not resurrected from earlier snapshots.
 OpenClaw exposes `trakt_backup` with `output`, `limit`, `delay_ms` and `max_pages`.
 The development CLI and plugin must both include this feature. Large histories can
 take several minutes; use the CLI directly if the plugin timeout is insufficient.

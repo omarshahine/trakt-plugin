@@ -18,16 +18,17 @@ import (
 )
 
 type fakeSource struct {
-	data      map[string][]json.RawMessage
-	requests  []string
-	markers   int
-	changed   bool
-	intercept func(string, int, []json.RawMessage, api.Pagination) ([]json.RawMessage, api.Pagination, error)
+	data         map[string][]json.RawMessage
+	requests     []string
+	markers      int
+	changed      bool
+	documentData map[string]json.RawMessage
+	intercept    func(string, int, []json.RawMessage, api.Pagination) ([]json.RawMessage, api.Pagination, error)
 }
 
 func raw(s string) json.RawMessage { return json.RawMessage(s) }
 func fixture() *fakeSource {
-	return &fakeSource{data: map[string][]json.RawMessage{
+	f := &fakeSource{data: map[string][]json.RawMessage{
 		"history":             {raw(`{"id":11,"watched_at":"2026-01-01T00:00:00Z","movie":{"ids":{"trakt":55}}}`), raw(`{"id":12,"watched_at":"2026-01-02T00:00:00Z","movie":{"ids":{"trakt":55}}}`), raw(`{"id":13,"action":"watch","type":"episode","episode":{"ids":{"trakt":56}}}`)},
 		"watchlist":           {raw(`{"id":21,"rank":1,"notes":"synthetic note","my_rating":8}`)},
 		"lists":               {raw(`{"name":"Synthetic","ids":{"trakt":7},"privacy":"private","sort_by":"rank","item_count":3,"future_field":true}`)},
@@ -41,6 +42,33 @@ func fixture() *fakeSource {
 		"collection/episodes": {raw(`{"episode":{"ids":{"trakt":55}},"show":{"ids":{"trakt":99}},"metadata":{"audio":"dts"}}`)},
 		"favorites":           {raw(`{"id":55,"rank":1,"type":"movie","movie":{"ids":{"trakt":55}},"notes":"synthetic favorite"}`), raw(`{"id":56,"rank":2,"type":"show","show":{"ids":{"trakt":55}}}`)},
 	}}
+	for _, resource := range pageResources {
+		if _, ok := f.data[resource]; ok {
+			continue
+		}
+		var row json.RawMessage
+		switch {
+		case strings.HasPrefix(resource, "watched/"):
+			kind := strings.TrimSuffix(strings.Split(resource, "/")[1], "s")
+			row = raw(fmt.Sprintf(`{"%s":{"ids":{"trakt":55}},"plays":2,"reset_at":null}`, kind))
+		case strings.HasPrefix(resource, "hidden/"):
+			row = raw(`{"hidden_at":"2026-01-01T00:00:00Z","type":"show","show":{"ids":{"trakt":55}}}`)
+		case strings.HasPrefix(resource, "comments/") || resource == "likes/comments":
+			row = raw(`{"comment":{"id":55,"parent_id":12,"comment":"synthetic reply"}}`)
+		case resource == "likes/lists":
+			row = raw(`{"list":{"ids":{"trakt":55}},"liked_at":"2026-01-01T00:00:00Z"}`)
+		case resource == "collaborations":
+			row = raw(`{"ids":{"trakt":55},"name":"Synthetic collaboration","user":{"ids":{"slug":"synthetic-owner"}}}`)
+		case strings.HasPrefix(resource, "network/") && resource != "network/requests":
+			row = raw(`{"user":{"ids":{"slug":"synthetic-friend"}},"followed_at":"2026-01-01T00:00:00Z"}`)
+		default:
+			row = raw(`{"id":55,"future_field":true}`)
+		}
+		f.data[resource] = []json.RawMessage{row}
+	}
+	// IDs overlap across media types; they are distinct hidden entries.
+	f.data["hidden/calendar"] = append(f.data["hidden/calendar"], raw(`{"type":"movie","movie":{"ids":{"trakt":55}}}`))
+	return f
 }
 func (f *fakeSource) GetBackupActivity() (json.RawMessage, error) {
 	f.markers++
@@ -48,6 +76,21 @@ func (f *fakeSource) GetBackupActivity() (json.RawMessage, error) {
 		return raw(`{"all":"changed"}`), nil
 	}
 	return raw(`{"all":"same"}`), nil
+}
+func (f *fakeSource) GetBackupDocument(_ string, resource string) (json.RawMessage, error) {
+	if f.documentData != nil {
+		return f.documentData[resource], nil
+	}
+	return raw(`{"synthetic":true}`), nil
+}
+
+func namedResource(m Manifest, name string) Resource {
+	for _, r := range m.Resources {
+		if r.Name == name {
+			return r
+		}
+	}
+	return Resource{}
 }
 func (f *fakeSource) GetBackupPage(user, resource, list string, p api.PaginationsParams) ([]json.RawMessage, api.Pagination, error) {
 	if user != "synthetic-user" {
@@ -116,7 +159,7 @@ func TestExportAllPagesAndChecksums(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !m.Complete || m.Consistency != "activity_marker_unchanged" || len(m.Resources) != 12 || f.markers != 2 {
+	if !m.Complete || m.Consistency != "activity_marker_unchanged" || len(m.Resources) != 45 || f.markers != 2 {
 		t.Fatalf("manifest: %+v", m)
 	}
 	files := archive(t, o.Output)
@@ -140,7 +183,12 @@ func TestExportAllPagesAndChecksums(t *testing.T) {
 			t.Fatalf("bad checksum %s", entry.Path)
 		}
 		var rows []json.RawMessage
-		if err := json.Unmarshal(b, &rows); err != nil || len(rows) != entry.Records {
+		if strings.HasPrefix(entry.Path, "user/") {
+			var doc map[string]json.RawMessage
+			if err := json.Unmarshal(b, &doc); err != nil || len(doc) == 0 || entry.Records != 1 {
+				t.Fatalf("bad document %s", entry.Path)
+			}
+		} else if err := json.Unmarshal(b, &rows); err != nil || len(rows) != entry.Records {
 			t.Fatalf("bad count %s", entry.Path)
 		}
 	}
@@ -158,7 +206,7 @@ func TestExportAllPagesAndChecksums(t *testing.T) {
 	if !strings.Contains(string(files["lists/7/page-000002.json"]), `"notes": null`) {
 		t.Fatal("lost null field")
 	}
-	if m.Resources[0].Records != 3 {
+	if namedResource(m, "history").Records != 3 {
 		t.Fatal("rewatches were deduplicated by title")
 	}
 	for _, scope := range []string{"ratings", "collections", "favorites"} {
@@ -189,7 +237,7 @@ func TestExportEmptyResources(t *testing.T) {
 		t.Fatalf("%+v %v", m, err)
 	}
 	for path, b := range archive(t, o.Output) {
-		if path != "manifest.json" && strings.TrimSpace(string(b)) != "[]" {
+		if path != "manifest.json" && !strings.HasPrefix(path, "user/") && strings.TrimSpace(string(b)) != "[]" {
 			t.Fatalf("empty output %s", b)
 		}
 	}
@@ -321,7 +369,7 @@ func TestExportHistoryReconcilesStaleCounts(t *testing.T) {
 				o.Limit = 5
 				m, err := Export(f, o)
 				if scenario == "stable" {
-					if err != nil || !m.Complete || m.Resources[0].Records != 9 || m.Resources[0].Expected != 9 {
+					if err != nil || !m.Complete || namedResource(m, "history").Records != 9 || namedResource(m, "history").Expected != 9 {
 						t.Fatalf("stale count not reconciled: %+v %v", m, err)
 					}
 				} else if err == nil || m.Complete {
@@ -333,17 +381,13 @@ func TestExportHistoryReconcilesStaleCounts(t *testing.T) {
 }
 
 func TestExpandedResourcesRejectInvalidIdentities(t *testing.T) {
-	for _, resource := range []string{"ratings/movies", "ratings/shows", "ratings/seasons", "ratings/episodes", "collection/movies", "collection/shows", "collection/episodes", "favorites"} {
+	for _, resource := range pageResources {
 		for _, scenario := range []string{"missing", "duplicate", "denied", "missing_headers"} {
 			t.Run(resource+"/"+scenario, func(t *testing.T) {
 				f := fixture()
 				switch scenario {
 				case "missing":
-					f.data[resource][0] = raw(`{"id":999,"show":{"ids":{"trakt":99}}}`)
-					// A parent show or top-level fallback ID is not a media identity.
-					if resource == "favorites" || strings.HasSuffix(resource, "/shows") {
-						f.data[resource][0] = raw(`{}`)
-					}
+					f.data[resource][0] = raw(`{}`)
 				case "duplicate":
 					f.data[resource] = append(f.data[resource], f.data[resource][0])
 				}
@@ -369,5 +413,50 @@ func TestExpandedResourcesRejectInvalidIdentities(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestExportRejectsMalformedSnapshots(t *testing.T) {
+	for _, body := range []string{`null`, `[]`, `{}`, `invalid`} {
+		t.Run(body, func(t *testing.T) {
+			f := fixture()
+			f.documentData = map[string]json.RawMessage{"user/settings": raw(body)}
+			o := options(t)
+			m, err := Export(f, o)
+			if err == nil || m.Complete {
+				t.Fatal("invalid snapshot accepted")
+			}
+			var stored Manifest
+			if err := json.Unmarshal(archive(t, o.Output)["manifest.json"], &stored); err != nil || stored.Complete {
+				t.Fatal("incomplete snapshot manifest missing")
+			}
+		})
+	}
+}
+
+func TestWebsiteFieldsAndReplyIdentityPreserved(t *testing.T) {
+	f := fixture()
+	f.documentData = map[string]json.RawMessage{
+		"user/settings": raw(`{"browsing":{"language":"en"},"sharing":{"twitter":false}}`),
+		"user/profile":  raw(`{"ids":{"slug":"synthetic-user"},"vip":true}`),
+		"user/stats":    raw(`{"total_plays":3}`),
+	}
+	f.data["comments/shows"] = append(f.data["comments/shows"], raw(`{"comment":{"id":56,"parent_id":12,"comment":"second synthetic reply"}}`))
+	o := options(t)
+	m, err := Export(f, o)
+	if err != nil || !m.Complete {
+		t.Fatalf("%+v %v", m, err)
+	}
+	files := archive(t, o.Output)
+	for _, check := range []struct{ path, field string }{
+		{"user/settings.json", `"sharing"`}, {"user/profile.json", `"vip": true`}, {"user/stats.json", `"total_plays": 3`}, {"user/last_activities.json", `"all": "same"`},
+		{"comments/shows/page-000001.json", `second synthetic reply`}, {"watched/shows/page-000001.json", `"reset_at": null`},
+	} {
+		if !strings.Contains(string(files[check.path]), check.field) {
+			t.Fatalf("missing website field %s", check.path)
+		}
+	}
+	if namedResource(m, "comments/shows").Records != 2 {
+		t.Fatal("replies deduplicated by parent")
 	}
 }
