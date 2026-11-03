@@ -299,3 +299,11 @@ metadata conflicts. No apply mode exists; current-only entries are not deletions
 See [scope and observed fidelity](../docs/collection-restore-planner.md).
 
 Missing-only collection restore executor: `trakt_backup_restore_collections` — [contract and live acceptance](../docs/collection-restore.md).
+
+### Discovery
+
+`trakt_discover_trending`, `trakt_discover_popular`,
+`trakt_discover_recommendations` and `trakt_discover_related` read movies/shows
+with full returned metadata and exact string media IDs. Related requires `id`;
+recommendations belong to the configured login and may be empty. No watched
+filter or list writes implied. See [scope and acceptance](../docs/discovery.md).

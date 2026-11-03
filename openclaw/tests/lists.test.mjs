@@ -290,3 +290,14 @@ test('collections restore partial and rate-limit states stay visible without mut
 		try{const result=await tool.execute('test',{source:'/synthetic/source.zip',current:'/synthetic/current.zip',review_id:review,expect_user:'synthetic',apply:true});const parsed=JSON.parse(result.content[0].text);assert.equal(calls.length,count+1);assert.equal(parsed.operation.attempted,true);assert.equal(parsed.operation.rows[1].state,'missing');if(throttled){assert.equal(parsed.retry_after_seconds,60);assert.equal(parsed.rate_limited,true);}}finally{mutationFailure=undefined;}
 	}
 });
+
+test('discovery tools are registered, bounded and read-only with closed schemas',async()=>{
+ const manifest=JSON.parse(readFileSync(new URL('../openclaw.plugin.json',import.meta.url)));
+ for(const mode of ['trending','popular','recommendations','related']){
+  const tool=tools.find(t=>t.name===`trakt_discover_${mode}`);assert.ok(tool && manifest.contracts.tools.includes(tool.name));assert.equal(tool.parameters.additionalProperties,false);
+  const params={type:'movie',limit:3,...(mode==='related'?{id:'9007199254740993'}:{}),...(mode==='recommendations'?{}:{page:2})};
+  await tool.execute('discover',params);assert.deepEqual(calls.at(-1).args,['discover',mode,'--type','movie','--limit','3',...(mode==='related'?['--id','9007199254740993']:[]),...(mode==='recommendations'?[]:['--page','2']),'--json']);
+  const count=calls.length;const rejected=await tool.execute('invalid',{...params,apply:true});assert.equal(JSON.parse(rejected.content[0].text).success,false);assert.equal(calls.length,count);
+ }
+ const rec=tools.find(t=>t.name==='trakt_discover_recommendations');const count=calls.length;await rec.execute('invalid',{page:2});assert.equal(calls.length,count);
+});

@@ -79,6 +79,12 @@ function preferenceTools(): ToolDef[] {
 
 // Tool metadata — each maps to a CLI subcommand
 const TOOLS: ToolDef[] = [
+ ...['trending','popular','recommendations','related'].map(mode=>({
+ name:`trakt_discover_${mode}`,command:'discover',subcommand:mode,
+ description:`Read ${mode} movies/shows from Trakt in service ranking order with full returned metadata and exact string Trakt IDs. Read-only, one page/response; requires configured Trakt login. Recommendations reflect that login, not inferred personal taste. Does not filter watched titles or add anything to lists. Related requires exact movie/show media ID. Recommendations has limit only, no page navigation.`,
+ parameters:Type.Object({type:Type.Optional(Type.Union([Type.Literal('movie'),Type.Literal('show')],{default:'show'})),limit:Type.Optional(Type.Integer({minimum:1,maximum:100,default:10})),...(mode==='related'?{id:Type.String({pattern:'^[1-9][0-9]*$'})}:{}),...(mode==='recommendations'?{}:{page:Type.Optional(Type.Integer({minimum:1,default:1}))})})
+ })),
+
  {name:'trakt_backup_plan_collection', command:'backup', subcommand:'plan-collection',
  description:'Offline collection observations from validated local source/current ZIPs: missing movie/episode memberships, collected_at and technical metadata conflicts. No login, network, apply mode or writes. Binds archive bytes/account UUID; does not expand nested show summaries. Observed metadata is not a guarantee of writable fields or date fidelity.',
  parameters:Type.Object({source:Type.String({minLength:1}),current:Type.String({minLength:1})})},

@@ -610,3 +610,5 @@ take several minutes; use the CLI directly if the plugin timeout is insufficient
 Collection restore planning (offline only): [contract and live evidence](docs/collection-restore-planner.md).
 
 Missing-only collection restore executor: [contract and live acceptance](docs/collection-restore.md).
+
+Discovery: trending/popular movies and shows, related titles and account recommendations are available through `discover`. See [commands and limits](docs/discovery.md).

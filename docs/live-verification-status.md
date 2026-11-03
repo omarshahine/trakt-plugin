@@ -147,6 +147,16 @@ Regression tests cover acceptance and refusal without the marker.
   a verified no-op, restored native observations matched source, and original
   collections/ratings/watches/favorites remained unchanged after test cleanup.
 
+## Discovery acceptance
+
+The discovery CLI and four plugin tools are implemented locally; see
+[discovery.md](discovery.md). Ten actual development-plugin reads covered all
+four modes for movie/show and popular page two for each type. Trending, popular
+and related returned titles; recommendations returned empty arrays on the sparse
+test account. A populated real recommendation response remains unverified.
+Credential bytes were unchanged; no account writes occurred. Watched-title
+filtering and shortlist writes are not part of these discovery calls.
+
 ## Next steps
 
 1. Submit/review the empty-statistics fix and the pending restore-planner,
