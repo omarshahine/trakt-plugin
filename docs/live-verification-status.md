@@ -135,8 +135,13 @@ Regression tests cover acceptance and refusal without the marker.
   classification through the actual plugin, plus missing-episode detection from
   earlier real archives. Original collection/rating/history/favorite objects were
   unchanged after cleanup. No collection apply mode exists. Movie date and four
-  technical fields survived; submitted 3d=false returned null. Episode technical
-  writes and nested-show restoration remain unverified.
+  technical fields survived; submitted 3d=false returned null. A subsequent actual flat-episode test also preserved its historical date and
+  the four technical fields. For both movie/episode, 3d:true read as numeric 1;
+  explicit 3d:false read as null. Both test additions were removed and original
+  movie/episode/nested-show collections plus ratings/history/favorites were
+  exactly unchanged. Other technical enums, hdr and whole-show restoration
+  remain unverified. The proposed narrow executor contract is documented but
+  not implemented.
 
 ## Next steps
 
