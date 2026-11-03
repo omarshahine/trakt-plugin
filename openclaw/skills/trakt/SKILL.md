@@ -19,6 +19,17 @@ View watch history, watchlist, progress, search, and mark items as watched on Tr
 
 All commands support `--json` for machine-readable output. **Always use `--json` for data processing.**
 
+## Authentication through the tool
+
+Call `trakt_auth` with `action: "start"` for initial setup. Present the returned
+verification URL and user code immediately so the user can approve. Then call
+`trakt_auth` with `action: "poll"` and the exact returned session handle. Wait at
+least the returned interval before each subsequent poll. Stop on authenticated
+status, expiry or an error; do not start repeated new sessions while approval is
+pending. On Windows, ask the user to complete initial authentication with
+`trakt-cli auth` locally. On POSIX systems, the matching CLI must support
+`auth --session`; update an older CLI or use local interactive authentication.
+
 ## Commands
 
 ### Progress (In-Progress Shows)

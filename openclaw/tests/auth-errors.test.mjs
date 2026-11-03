@@ -8,7 +8,8 @@ let failure;
 let stdout = '';
 let succeeds = false;
 const execFile = () => { throw new Error('unexpected callback invocation'); };
-execFile[promisify.custom] = async () => {
+execFile[promisify.custom] = async (_cli, args) => {
+	if (args.includes('--help')) return { stdout: '  --session string  Poll an auth session', stderr: '' };
 	if (!succeeds) throw failure;
 	return { stdout, stderr: '' };
 };
@@ -58,11 +59,12 @@ test('non-auth rate limit diagnostics still work', async () => {
 	assert.equal(response.retry_after_seconds, 17);
 });
 
-// Successful device authorization must still reach the agent so it can show
-// the user the verification URI and code. No real authentication is performed.
-test('successful authentication still returns device authorization instructions', async () => {
+// Start returns instructions immediately, before the user authorizes.
+// No real authentication is performed.
+test('starting authentication returns structured device authorization instructions', async () => {
 	succeeds = true;
-	stdout = 'Visit https://example.invalid/activate and enter SYNTHETIC-CODE';
+	const pending = { success: true, status: 'pending', session: 'a'.repeat(32), verification_url: 'https://trakt.tv/activate', user_code: 'SYNTHETIC-CODE', expires_in: 600, interval: 5 };
+	stdout = JSON.stringify(pending);
 	const result = await tools.find((tool) => tool.name === 'trakt_auth').execute('test', {});
-	assert.equal(JSON.parse(result.content[0].text).output, stdout);
+	assert.deepEqual(JSON.parse(result.content[0].text), pending);
 });
