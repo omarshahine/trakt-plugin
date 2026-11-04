@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -18,6 +19,9 @@ import (
 )
 
 type APIClient struct {
+	// Context bounds all requests, including authentication refresh and retries.
+	// Nil preserves the default background context for existing callers.
+	Context context.Context
 	// The url of the API endpoint
 	Endpoint string
 	// The client for accessing the API
@@ -110,6 +114,8 @@ type AuthDeviceCodeResp struct {
 }
 
 type requestParams struct {
+	// noCache asks intermediaries to revalidate backup reads across pages.
+	noCache    bool
 	method     string
 	path       string
 	body       interface{}
@@ -203,13 +209,20 @@ func (c *APIClient) RefreshAccessToken() error {
 }
 
 func (c *APIClient) doRequest(params requestParams) (*http.Response, error) {
-	req, err := http.NewRequest(params.method, c.Endpoint+params.path, nil)
+	ctx := c.Context
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	req, err := http.NewRequestWithContext(ctx, params.method, c.Endpoint+params.path, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	req.Header.Add("Accept", "application/json")
 	req.Header.Add("trakt-api-version", "2")
+	if params.noCache {
+		req.Header.Set("Cache-Control", "no-cache")
+	}
 
 	if params.body != nil {
 		req.Header.Add("Content-Type", "application/json")
@@ -942,6 +955,12 @@ type SyncHistoryResp struct {
 		Movies   int `json:"movies"`
 		Episodes int `json:"episodes"`
 	} `json:"added"`
+	// With browsing.watch_only_once enabled, a repeated watch can update an
+	// existing event rather than add a new play. Never discard these counts.
+	Updated struct {
+		Movies   int `json:"movies"`
+		Episodes int `json:"episodes"`
+	} `json:"updated"`
 	// NotFound also carries seasons/episodes when the request narrowed a
 	// show via season/episode selectors: Trakt rejects unrecognized
 	// selectors there while still answering 201, so those entries must be

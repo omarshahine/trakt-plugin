@@ -127,6 +127,32 @@ trakt-cli history remove --type movie "The Godfather" --json
 |------|-------------|---------|
 | `--type` | `show` or `movie` | `show` |
 
+### Custom lists (read-only)
+
+```bash
+trakt-cli lists --limit 100 --page 1 --json
+trakt-cli lists items --list 12345 --limit 100 --page 1 --json
+trakt-cli lists items --list weekend-films --json
+```
+
+Uses your existing login and reads your own lists, including private lists your
+account can access. Use a Trakt ID or slug from `lists`, not a display name.
+`--page` must be positive; `--limit` is 1-1000 (default 10).
+
+JSON output is `{ "items": [...], "page", "limit", "page_count", "item_count" }`.
+Records preserve **all fields returned by the API**, including list metadata,
+item IDs, ranks, timestamps, notes and mixed movie/show/season/episode/person
+records. Fields present in the website export but omitted by the API cannot be
+reconstructed by these commands. Pagination values come from response headers;
+missing headers are empty strings, not an assertion that the data is complete.
+Follow `page_count` where provided. No automatic all-pages export is performed.
+These commands never create, edit, reorder or delete lists and are not a full
+account backup or restore feature. API failures exit nonzero.
+
+OpenClaw exposes `trakt_lists` and `trakt_list_items` with the same pagination
+parameters (`trakt_list_items` also requires `list`). Both the plugin and the
+companion CLI must include this feature; an older CLI will reject `lists`.
+
 ### watchlist
 
 View your watchlist.
@@ -281,6 +307,335 @@ claude --plugin-dir /path/to/trakt-plugin
 
 Originally forked from [angristan/trakt-cli](https://github.com/angristan/trakt-cli). Extended with watchlist, progress, history add commands, `--json` output, and AI agent plugin packaging.
 
+### Custom-list management (preview first)
+
+```bash
+# All commands below are OFFLINE previews; no login or requests are performed.
+trakt-cli lists create --name "Weekend films" --privacy private --json
+trakt-cli lists add --list 12345 --type movie --ids 55,56 --json
+trakt-cli lists remove --list 12345 --type episode --ids 123 --json
+trakt-cli lists notes --list 12345 --item 900 --notes "Watch together" --json
+trakt-cli lists notes --list 12345 --item 900 --notes="" --json
+trakt-cli lists reorder --list 12345 --rank 901,900,902 --json
+```
+
+Add **`--apply`** only when you intend to execute that write. The CLI resolves the
+token's current account through settings rather than trusting a cached account
+slug. It operates on that account's owned lists, not another owner's collaborative
+lists. Preview `me` is a placeholder resolved only when applying. New lists default
+to private; `link`, `friends` and `public` require explicit selection. Existing
+`lists` and `lists items` reads remain read-only. Whole-list deletion is not added.
+
+Membership uses canonical positive **Trakt media IDs**; supported types are
+movie, show, season and episode. Notes/reordering instead use **list-entry IDs**
+from `lists items`. IDs are strings at the CLI/plugin boundary and exact integer
+JSON values on the wire, preserving large IDs. Duplicates and invalid IDs fail
+before requests. Notes are limited to 500 Unicode code points; explicitly empty
+notes clear them. **Notes require VIP**: apply checks the account first and refuses
+to write for non-VIP accounts rather than reporting an ignored edit as success.
+Free-account list/item limits can still reject creation/addition with HTTP 420.
+
+Reorder requires a complete permutation of every current list-entry ID. Applying
+reads all pages, checks IDs/counts and compares list metadata before/after reading;
+missing headers, missing IDs, duplicates, stale ranks or detected changes abort
+before writing. There is no transactional lock between preflight and POST. Manual
+rank changes may not be visible while the list is displayed with another sort;
+the command does not change the list's display-sort setting.
+
+Mutations are never automatically replayed, including after 401, rate limits or
+uncertain network outcomes. Inspect the list before a manual retry. Partial or
+malformed success responses exit nonzero; structured CLI stdout and plugin error
+results preserve available mutation outcomes, counts and `not_found`/`skipped_ids`.
+An uncertain response does not prove nothing changed. Previews/results can contain
+private list names/notes; do not publish them.
+
+OpenClaw tools: `trakt_list_create`, `trakt_list_add`, `trakt_list_remove`,
+`trakt_list_notes`, `trakt_list_reorder`. Each defaults to offline preview;
+`apply: true` explicitly writes and requires login. Preview and obtain the user's
+authorization before applying. No automatic fallback writes are performed.
+
+Contract reference: [Trakt's published list routes](https://github.com/trakt/trakt-api/blob/master/projects/api/src/contracts/users/subroutes/userLists.ts).
+Tests use synthetic local HTTP servers, not real Trakt writes. End-to-end server
+acceptance and free-account limits need a separate test account; VIP-only notes
+cannot be fully live-verified with a non-VIP account.
+
+### Ratings and favorites (preview-first management)
+
+```bash
+# Read one page; follow page_count for full coverage.
+trakt-cli ratings --type movie --page 1 --limit 100 --json
+trakt-cli ratings --type season --json
+trakt-cli favorites --type all --json
+
+# Offline previews: no credential loading or Trakt requests.
+trakt-cli ratings set --type movie --ids 55 --rating 8 --rated-at 2026-01-01T00:00:00Z --json
+trakt-cli ratings remove --type episode --ids 123 --json
+trakt-cli favorites add --type show --ids 55,56 --json
+trakt-cli favorites remove --type movie --ids 55 --json
+```
+
+Ratings support movies, shows, seasons and episodes, using their own Trakt media
+IDs rather than parent-show IDs. `set` adds or changes a rating, restricted to
+integers 1-10. Optional `--rated-at` must be ISO8601 and is normalized to UTC;
+omitting it uses server time. Favorites support movies/shows only. Input IDs are
+canonical positive integer strings, preserve precision above 2^53 and must be
+unique. Reads retain raw returned fields and pagination; missing pagination does
+not assert completeness. Unknown media types and invalid arguments fail before
+requests. No title-search guessing or nested show-to-episode expansion is done.
+
+Writes require **both `--apply` and `--expect-user <account-slug>`**. The account is
+resolved freshly from `/users/settings`; a mismatch aborts before the sync write.
+`--expect-user` is a safety check, **not an account selector**. The CLI/plugin still
+use the single `~/.trakt.yaml` login; separate named credential profiles are not
+implemented. Do not replace a production login to run test-account experiments.
+No token refresh/replay is attempted for the mutation itself. After 401, 420,
+rate limits or uncertain network results, inspect account state before retrying.
+HTTP 420 can indicate an account limit. Partial/unconfirmed counts, `not_found`
+items and malformed responses exit nonzero, preserving available structured
+outcomes/counts instead of reporting every requested change as successful.
+
+OpenClaw tools: `trakt_ratings`, `trakt_rating_set`, `trakt_rating_remove`,
+`trakt_favorites`, `trakt_favorite_add`, `trakt_favorite_remove`. Write tools
+default to offline preview; explicit `apply: true` and matching `expect_user`
+are required. Preview and obtain user authorization before applying. These tools
+do not change watch history or custom lists. Favorite notes/reordering are not
+included in this contribution.
+
+Contracts: [Trakt sync routes](https://github.com/trakt/trakt-api/blob/master/projects/api/src/contracts/sync/index.ts),
+[rating reads](https://github.com/trakt/trakt-api/blob/master/projects/api/src/contracts/users/subroutes/ratings.ts),
+[favorite reads](https://github.com/trakt/trakt-api/blob/master/projects/api/src/contracts/users/subroutes/favorites.ts).
+Tests use synthetic local HTTP servers; real service acceptance remains untested.
+Live write verification requires an isolated test-account credential setup first.
+
 ## License
 
 MIT
+
+### Scoped raw backup (read-only Trakt access)
+
+```bash
+trakt-cli backup --output ./trakt-backup.zip --json
+```
+
+Creates a **new** ZIP with every page of history, watchlist, custom-list metadata,
+each owned custom list's contents, movie/show/season/episode ratings,
+movie/show/episode collections, and mixed movie/show favorites.
+Also includes playback progress, watched movie/show summaries, hidden calendar/
+progress/reset/recommendation items, comments including replies, all eight
+website note categories, follow requests/followers/following/friends, liked
+comments/lists, saved filters, and collaborated-list metadata.
+Collections request `extended=metadata` and retain returned collection timestamps,
+technical metadata, and nested season/episode data. Reuses the current login; does not change
+Trakt or include OAuth credentials. Existing output files are never overwritten.
+Keep the ZIP private. It contains your account data.
+
+`manifest.json` records the explicit scope/exclusions, start/end times, per-resource
+expected/actual counts, page counts, per-file SHA-256 checksums and `complete`.
+Records retain API fields, item ordering and individual history event IDs (including
+rewatches). Only list inventory and seen IDs, not all history pages, are held in memory.
+
+Completeness requires valid stable page counts and page sizes, exact collected
+counts, unique record IDs, matching list metadata counts, and an unchanged
+`/sync/last_activities` marker. History totals on earlier pages can be stale:
+the collected history count must match the terminal page's reported total.
+Trakt does not provide a transactional snapshot: an unchanged activity marker is a
+consistency check, not an absolute snapshot guarantee. A changed marker fails the export.
+
+Defaults: `--limit 1000`, `--delay-ms 1000`, `--max-pages 10000` per resource,
+and `--timeout-seconds 600`. Increase the time budget for large or slow exports
+(up to 86400 seconds), for example `trakt-cli backup --output ./large.zip
+--timeout-seconds 7200 --json`. The deadline cancels request spacing and in-flight
+HTTP reads, then writes the incomplete manifest and closes the ZIP before exiting
+nonzero. Ctrl-C and SIGTERM use the same cooperative cancellation path.
+OpenClaw passes the same budget and reserves another 30 seconds for finalization,
+then forcibly terminates a hung process. Storage failure or forced termination
+can still prevent a usable ZIP; validate the manifest before using an archive.
+An older CLI that lacks the deadline flag refuses the plugin request before
+creating a backup. Update the CLI alongside the plugin.
+Backup reads request HTTP cache revalidation; this does not guarantee the service
+honors it. Missing pagination, an API error, changed page counts or page sizes,
+unreconciled item counts, duplicate IDs, or the page cap
+stops the export. No automatic retry is made after a rate limit. Failed exports
+exit nonzero and retain available pages with `complete: false` and errors in the
+manifest when storage permits. Do not treat a partial ZIP as a complete backup.
+
+For a brand-new account, Trakt can return HTTP 204 for the statistics snapshot.
+This is recorded as `user/stats.json: null` with `http_status: 204` in that file's
+manifest entry, not fabricated zero totals or an unmarked empty object. One
+snapshot observation is counted. Other missing/empty account documents still
+fail, and native comparison requires the explicit no-content marker for null
+statistics. Historical watchlist dates and repeated watches are not guaranteed
+by merely accepting a sync/import request; verify the read-back records.
+
+Ratings and collections are identified by the corresponding media's Trakt ID,
+not its parent show's ID. Their pagination totals remain strict; history's
+terminal-count reconciliation does not silently relax other categories.
+
+Raw account settings (including browsing/sharing), the full/VIP profile, statistics
+and the initial activity snapshot are stored as JSON objects under `user/`.
+Other resources remain raw paginated arrays. Follow requests are the sole
+explicitly unpaginated array endpoint; unexpected pagination there fails safely.
+Missing headers on other array resources still fail rather than imply completeness.
+
+This targets the categories in a website account export, but does **not** promise
+byte-identical files, future website categories, or fields the API does not return.
+Only collaborated-list metadata is included, not contents owned by other users.
+There is no general full-account restore; reviewed ratings and favorites-membership
+executors have separate, limited scopes. `complete` means the declared API scope passed all
+checks, not a guarantee of website-field parity or a transactional snapshot.
+For example, third-party API responses can omit the account email, date of birth,
+and numeric user Trakt ID even when the website export contains them. These fields
+are not fabricated or recovered from an older export. Likewise, playback entries
+no longer returned by the live API are not resurrected from earlier snapshots.
+
+#### Optional website-only account fields
+
+```bash
+trakt-cli backup import-supplement --website-export ./official.zip --output ./account-supplement.json
+trakt-cli backup --output ./supplemented.zip --website-supplement ./account-supplement.json --json
+```
+
+Import saves only the account email, date of birth and numeric user ID, with
+account slug/UUID and the official ZIP's SHA-256. The import source is unchanged;
+existing supplement/output files are never overwritten. The supplement contains
+private account data and should stay private. Import output does not print its values.
+
+Opt-in exports bind the supplement to the live settings UUID and account slug.
+The profile must match that slug and any UUID/numeric ID it returns. Only absent
+keys are filled: an explicit null or value from the current API is retained.
+The original API settings/profile remain under `raw-api/user/`; supplemented
+versions are under `user/`, with checksums for both.
+
+The manifest's `mode` is `api_only` by default or `website_supplemented` when
+enabled. Its `supplement` section records the source checksum, import timestamp,
+applied field paths and raw API paths, and marks values as historical and not
+revalidated. The website snapshot time is explicitly unknown, not inferred from
+the import time. Import a new supplement after account details change; the
+exporter does not fetch or refresh these saved values automatically.
+
+This closes known missing account-field paths, not a promise that a newer backup
+equals an older website snapshot or that future website fields are covered.
+
+#### Restore planning and website import JSON (preview only)
+
+For precisely undoing a single dated watch, see
+[history-event removal](docs/history-event-removal.md). This is separate from
+backup restoration: it does not import archives or remove every play of a title.
+
+For explicit execution of a reviewed missing-ratings batch, see the
+[ratings-only restore executor](docs/ratings-restore.md). It has an offline
+archive-bound review, fresh UUID/conflict checks, and value/date readback; it
+does not execute the history/watchlist candidates described below.
+
+For adding only missing movie/show favorites, see
+[favorites membership restoration](docs/favorites-restore.md). This uses the
+same archive/account review gates but intentionally excludes ranks, notes and
+timestamps; it is not a full favorites-metadata restore.
+
+```bash
+# Offline: supply a freshly created current-account backup.
+trakt-cli backup plan-restore --source ./desired.zip --current ./current.zip --json
+# Or fetch a fresh API snapshot to a NEW ZIP, then plan.
+trakt-cli backup plan-restore --source ./desired.zip --live-current ./new-current.zip --import-json ./review-import.json --json
+```
+
+The plan reports `history_policy` from the **current** snapshot's
+`browsing.watch_only_once`. If enabled or unverified, repeat-watch candidates
+are withheld as conflicts: an import can update an existing watch's date rather
+than add a play. Other eligible additions remain available. Verify **Disable
+Multiple Plays** in the official Trakt settings and take a fresh snapshot before
+planning rewatches. The command never changes that preference, and a saved
+`false` value does not prove live/import fidelity or replace post-import readback.
+
+Both archives use the comparison reader's integrity checks; partial native
+backups are refused. Matching account identities are required. Website-layout
+ZIPs still have unknown completeness. The current archive is a snapshot, not a
+lock: refresh it immediately before reviewing any eventual manual import.
+
+Plans contain additions only: missing movie/episode watches, watchlist entries,
+and ratings. Watches are matched by media ID plus normalized timestamp, rather
+than watch-event ID alone; repeated watches at different times remain eligible
+only when the current snapshot explicitly permits multiple plays.
+Ambiguous identical-time repeats, unknown-date ambiguity, invalid dates/ratings,
+and changed ratings are conflicts, not automatic changes. No timestamps are
+fabricated. Explicit `watched_at: "unknown"` is preserved; a missing/null watch
+timestamp is not silently treated as unknown. Missing coverage is not deletion.
+Custom-list gaps are reported separately: the website importer has no target-list
+field. Other categories are explicitly unsupported; notes, rank, supplemental
+account fields and history-event IDs are not restored.
+
+Optional `--import-json` creates a **new** local array containing conflict-free
+candidate rows using `trakt_id` (string), `type`, and the appropriate `watched_at`,
+`watchlisted_at`, or `rating`/`rated_at` fields from Trakt's JSON guidelines. It
+does **not** upload or import this file. Each row contains one action; no unrelated
+actions are combined. Media without a usable Trakt ID are withheld. Missing rating
+timestamps are omitted, as allowed by the format. Actual website import acceptance
+and duplicate-watch behavior have not been live-tested; review before use.
+Plans and import files contain private IDs/dates/ratings. Input ZIPs are unchanged.
+
+OpenClaw exposes `trakt_backup_plan_restore` with `source`, `current`, and optional
+`import_json`. This plugin tool is offline and needs no Trakt authentication;
+use `trakt_backup` first for fresh account state. No restore API calls or deletions
+are implemented. No backup or report should be committed to the repository.
+
+#### Read-only archive comparison
+
+```bash
+trakt-cli backup compare --before ./earlier.zip --after ./later.zip --json
+```
+
+This command only reads the two local ZIPs. It does not load Trakt credentials,
+contact the API, modify archives, or restore anything. OpenClaw exposes
+`trakt_backup_compare` with `before`, `after` and optional `sample_limit`.
+
+Native backups must have a supported, complete manifest. Comparison verifies
+ZIP reads/CRC, each listed SHA-256 and count, resource totals, contiguous page
+names, unique record identities, and absence of unlisted files. Partial or
+corrupt native backups are refused. The flat filename layout of official
+website ZIPs is also recognized; CRC/JSON/identity checks cannot establish their
+account-wide completeness or authenticity, so completeness is reported unknown.
+Unrecognized files and detectable intermediate page gaps fail explicitly.
+
+Known account identities must not conflict. When the two archives lack enough
+identity information to match accounts, the report says `unverified`.
+Resources covered on only one side are coverage differences, not inferred
+additions or deletions. Shared resources report added/removed IDs and changed
+records, separating media-metadata-only changes, record-data changes and account
+snapshots. These are archive differences, not proof of account actions.
+
+JSON object-key order and whitespace do not cause changes; array order remains
+significant. IDs retain integer precision. Samples show only IDs and changed
+field paths, never before/after values. `--sample-limit` defaults to 10 per change
+type/resource (0 disables samples; maximum 100). Each changed sample includes at
+most 20 field paths. Raw API snapshots are validated but excluded from logical
+change totals. Historical supplement provenance and freshness-review warnings
+remain visible, including when both archives reuse the same saved source.
+
+Comparison refuses archives with over 10,000 ZIP members, an expanded member
+over 16 MiB or a total expanded size over 512 MiB.
+OpenClaw exposes `trakt_backup` with `output`, `limit`, `delay_ms`, `max_pages`,
+`website_supplement` and `timeout_seconds`.
+The development CLI and plugin must both include this feature. Large histories can
+take several minutes; use the CLI directly if the plugin timeout is insufficient.
+
+Collection restore planning (offline only): [contract and live evidence](docs/collection-restore-planner.md).
+
+Missing-only collection restore executor: [contract and live acceptance](docs/collection-restore.md).
+
+Discovery: trending/popular movies and shows, related titles and account recommendations are available through `discover`. See [commands and limits](docs/discovery.md).
+
+Title details and season/episode browsing: [commands and date semantics](docs/title-browsing.md).
+
+List renaming, description and privacy updates: [explicit-field previews and verified application](docs/list-metadata-update.md).
+
+Verified selected-membership list copy/move: [preview, verification and limits](docs/list-transfers.md).
+
+Discovery now supports explicit page-local genre/year/runtime/rating/vote criteria and current genre lookup. See [filter scope and missing-data policy](docs/discovery.md).
+
+Bounded watch-tonight shortlists: [multi-page collection, factual fit and stop reasons](docs/watch-tonight.md).
+
+Episode-aware continuations: see [next episodes for tonight](docs/episode-tonight.md) for bounded, read-only suggestions from started shows.
+
+Explainable preference-seeded discovery: see [seeded related titles](docs/seeded-related.md).
+
+[List comparison and reconciliation previews](docs/list-comparison.md) report typed differences without writes.

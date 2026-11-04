@@ -5,6 +5,17 @@ import (
 	"testing"
 )
 
+func TestSyncHistoryPreservesUpdatedCounts(t *testing.T) {
+	// Captured response shape when watch_only_once replaces an existing date.
+	var response SyncHistoryResp
+	if err := json.Unmarshal([]byte(`{"added":{"movies":0,"episodes":0},"updated":{"movies":1,"episodes":2},"not_found":{"movies":[],"episodes":[]}}`), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Updated.Movies != 1 || response.Updated.Episodes != 2 || response.Added.Movies != 0 || response.Added.Episodes != 0 {
+		t.Fatalf("updated watches lost or counted as additions: %+v", response)
+	}
+}
+
 // Trakt answers POST /sync/history with 201 even when it rejects individual
 // season/episode selectors; those land in not_found.seasons/episodes and must
 // survive decoding so partial writes can be reported as partial.

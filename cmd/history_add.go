@@ -423,6 +423,8 @@ var historyAddCmd = &cobra.Command{
 			payload := map[string]interface{}{
 				"added_movies":       resp.Added.Movies,
 				"added_episodes":     resp.Added.Episodes,
+				"updated_movies":     resp.Updated.Movies,
+				"updated_episodes":   resp.Updated.Episodes,
 				"not_found_movies":   len(resp.NotFound.Movies),
 				"not_found_shows":    len(resp.NotFound.Shows),
 				"not_found_seasons":  len(resp.NotFound.Seasons),
@@ -437,6 +439,9 @@ var historyAddCmd = &cobra.Command{
 		}
 
 		fmt.Printf("Added: %d movies, %d episodes\n", resp.Added.Movies, resp.Added.Episodes)
+		if resp.Updated.Movies > 0 || resp.Updated.Episodes > 0 {
+			fmt.Printf("Updated existing watches: %d movies, %d episodes (not additional plays; check Disable Multiple Plays in Trakt settings)\n", resp.Updated.Movies, resp.Updated.Episodes)
+		}
 		if len(resp.NotFound.Movies) > 0 || len(resp.NotFound.Shows) > 0 ||
 			len(resp.NotFound.Seasons) > 0 || len(resp.NotFound.Episodes) > 0 {
 			fmt.Printf("Not found: %d movies, %d shows, %d seasons, %d episodes\n",

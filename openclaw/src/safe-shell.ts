@@ -20,6 +20,8 @@ const _runFileAsync = promisify(_runFile);
 
 export interface RunOptions {
 	timeout?: number;
+ /** Last-resort termination signal after the CLI has had time to finalize. */
+ killSignal?: NodeJS.Signals;
 	maxBuffer?: number;
 	/** Per-child environment. Omit to inherit the parent environment. */
 	env?: NodeJS.ProcessEnv;
@@ -35,6 +37,7 @@ export async function runCli(
 		encoding: 'utf8',
 		env: opts.env,
 		timeout: opts.timeout ?? 120_000,
+ killSignal: opts.killSignal,
 		maxBuffer: opts.maxBuffer ?? 4 * 1024 * 1024,
 	});
 	return { stdout, stderr };

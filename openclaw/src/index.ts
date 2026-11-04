@@ -6,7 +6,7 @@
  */
 
 import { definePluginEntry } from 'openclaw/plugin-sdk/plugin-entry';
-import { Type } from '@sinclair/typebox';
+import { Type, type TSchema } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 import { existsSync } from 'fs';
 import { homedir } from 'os';
@@ -43,8 +43,160 @@ const SYNC_TOOL: ToolDef = {
 	}),
 };
 
+function preferenceTools(): ToolDef[] {
+	const result: ToolDef[] = [];
+	for (const resource of ['ratings', 'favorites']) {
+		const kinds = resource === 'ratings' ? ['movie', 'show', 'season', 'episode'] : ['movie', 'show'];
+		result.push({
+			name: `trakt_${resource}`, command: resource,
+			description: `Read one page of your ${resource}, preserving returned timestamps, IDs and metadata. Read-only; follow pagination for complete coverage. Uses the currently configured single Trakt login; named accounts are not yet supported.`,
+			parameters: Type.Object({
+				type: Type.Optional(Type.Union([...kinds, 'all'].map(value => Type.Literal(value)), { description: 'Media type; default all' })),
+				page: Type.Optional(Type.Integer({ minimum: 1 })),
+				limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000 })),
+			}),
+		});
+		for (const action of [resource === 'ratings' ? 'set' : 'add', 'remove']) {
+			const properties: Record<string, TSchema> = {
+				type: Type.Union(kinds.map(value => Type.Literal(value))),
+				ids: Type.Array(Type.String({ pattern: '^[1-9][0-9]*$' }), { minItems: 1, maxItems: 10000, uniqueItems: true, description: 'Exact Trakt MEDIA IDs as strings' }),
+				apply: Type.Optional(Type.Boolean({ default: false, description: 'Explicitly execute the authorized write; default offline preview' })),
+				expect_user: Type.Optional(Type.String({ minLength: 1, description: 'Required with apply=true: account slug must match fresh token identity before any write' })),
+			};
+			if (resource === 'ratings' && action === 'set') {
+				properties.rating = Type.Integer({ minimum: 1, maximum: 10, description: 'New rating; may replace the existing rating' });
+				properties.rated_at = Type.Optional(Type.String({ description: 'Optional ISO8601 timestamp; omitted uses server time' }));
+			}
+			result.push({
+				name: `trakt_${resource === 'ratings' ? 'rating' : 'favorite'}_${action}`, command: resource, subcommand: action,
+				description: `${action} ${resource} using exact Trakt media IDs. Defaults to offline preview with no login/network. Explicit apply=true plus matching expect_user is required to write. Preview and obtain user authorization before applying. No automatic retries; inspect partial/uncertain outcomes. Favorites support movies/shows only. Does not change history or lists.`,
+				parameters: Type.Object(properties),
+			});
+		}
+	}
+	return result;
+}
+
+function discoveryParameters(mode:string){return Type.Object({genres:Type.Optional(Type.Array(Type.String({pattern:'^[a-zA-Z][a-zA-Z0-9-]{0,63}$'}),{maxItems:50})),year_min:Type.Optional(Type.Integer({minimum:1800,maximum:9999})),year_max:Type.Optional(Type.Integer({minimum:1800,maximum:9999})),runtime_min:Type.Optional(Type.Integer({minimum:1,maximum:10000})),runtime_max:Type.Optional(Type.Integer({minimum:1,maximum:10000})),min_rating:Type.Optional(Type.Number({minimum:0,maximum:10})),min_votes:Type.Optional(Type.Integer({minimum:0,maximum:9007199254740991})),exclude_watched:Type.Optional(Type.Boolean({default:false})),exclude_watchlisted:Type.Optional(Type.Boolean({default:false})),exclude_ids:Type.Optional(Type.Array(Type.String({pattern:'^[1-9][0-9]*$'}),{maxItems:10000})),shortlist:Type.Optional(Type.String({minLength:1})),type:Type.Optional(Type.Union([Type.Literal('movie'),Type.Literal('show')],{default:'show'})),limit:Type.Optional(Type.Integer({minimum:1,maximum:100,default:10})),...(mode==='related'?{id:Type.String({pattern:'^[1-9][0-9]*$'})}:{}),...(mode==='recommendations'?{}:{page:Type.Optional(Type.Integer({minimum:1,default:1}))})})}
+
 // Tool metadata — each maps to a CLI subcommand
 const TOOLS: ToolDef[] = [
+ {name:'trakt_list_compare',command:'lists',subcommand:'compare',description:'Read-only comparison of two OWNED numeric list IDs (self comparison allowed). Reports typed membership overlap and differences, notes differences, stable revisions/hashes and bounded copy/removal previews. Source-only items propose copy to destination; destination-only items propose removal from destination, NEVER source deletion. Limit 1-100 per direction. No apply mode, network writes or automatic reconciliation. Person proposals and note-bearing removals withheld. Copy previews do not copy notes/dates/ranks. Proposals require separate fresh review and explicit authorization with existing mutation tools; hashes do not create an atomic snapshot or apply token. Maximum 1000 entries per list.',parameters:Type.Object({source:Type.String({pattern:'^[1-9][0-9]*$'}),destination:Type.String({pattern:'^[1-9][0-9]*$'}),limit:Type.Optional(Type.Integer({minimum:1,maximum:100,default:20}))})},
+
+ {name:'trakt_seeded_related',command:'seeded-related',description:'Read-only related-title recommendations seeded by the active account favorites and/or personal ratings. source both/favorites/ratings, min_seed_rating default 8; favorites qualify independently. At most max_seeds (1-10) first-page related requests of per_seed (1-20) titles. Watched exclusion mandatory; watchlist exclusion defaults true, false opts out. Complete bounded preference/history reads required. Excludes eligible seed titles, deduplicates and preserves observed seed connections. Order is favorites first, descending personal rating, exact seed ID, then first-seen service order: not an inferred personalized score. Reads all selected seed pages before final count truncation. No silent trending fallback when no seeds. Partial errors retain unverified items and counters; no automatic retry, list/watch mutations, enjoyment or availability guarantee.',parameters:Type.Object({type:Type.Optional(Type.Union([Type.Literal('movie'),Type.Literal('show')],{default:'show'})),source:Type.Optional(Type.Union(['both','favorites','ratings'].map(x=>Type.Literal(x)),{default:'both'})),min_seed_rating:Type.Optional(Type.Integer({minimum:1,maximum:10,default:8})),max_seeds:Type.Optional(Type.Integer({minimum:1,maximum:10,default:3})),per_seed:Type.Optional(Type.Integer({minimum:1,maximum:20,default:10})),count:Type.Optional(Type.Integer({minimum:1,maximum:50,default:5})),exclude_watchlisted:Type.Optional(Type.Boolean({default:true}))})},
+
+ {name:'trakt_episode_tonight',command:'episode-tonight',description:'Read-only next-episode suggestions for already-started shows. Strict complete episode-history snapshot (100000 events maximum) orders shows by latest watch time. Checks at most max_shows (1-20), returns at most count (1-20), one provider-selected next episode per show. Requires incomplete progress, absence from history and a verified aired broadcast timestamp. Missing/unknown/future dates are withheld, not skipped to later episodes. Specials off by default; include_specials allows provider order only. Optional runtime_max is per episode, not total-session budget; unknown runtimes excluded. Reset progress unsupported. Activity changes or request failures retain partial items with scan_succeeded false; no automatic retry, watch logging, list writes or availability claim.',parameters:Type.Object({count:Type.Optional(Type.Integer({minimum:1,maximum:20,default:5})),max_shows:Type.Optional(Type.Integer({minimum:1,maximum:20,default:5})),runtime_max:Type.Optional(Type.Integer({minimum:1,maximum:10000})),include_specials:Type.Optional(Type.Boolean({default:false}))})},
+
+ {name:'trakt_watch_tonight',command:'shortlist',description:'Build a read-only bounded multi-page movie/show shortlist. Count 1-50, max_pages 1-20, limit per page 1-100; stops at count, budget, reported end or missing pagination. Watched/watchlist exclusions default TRUE and are loaded once and activity-checked; explicit false opts out. Genre/year/runtime/rating/vote filters and cross-page dedup preserve first-seen service order. Factual-fit explanations are metadata/snapshot evidence, not inferred taste or availability. Recommendations reads one response only. Partial failures retain items and stop reason; never auto-retry rate limits. Optional shortlist prepares list-add preview ONLY; no writes or whole-catalog completeness claim.',
+ parameters:Type.Object({...discoveryParameters('popular').properties,id:Type.Optional(Type.String({pattern:'^[1-9][0-9]*$'})),mode:Type.Optional(Type.Union(['popular','trending','related','recommendations'].map(x=>Type.Literal(x)),{default:'popular'})),count:Type.Optional(Type.Integer({minimum:1,maximum:50,default:5})),max_pages:Type.Optional(Type.Integer({minimum:1,maximum:20,default:5})),limit:Type.Optional(Type.Integer({minimum:1,maximum:100,default:20})),exclude_watched:Type.Optional(Type.Boolean({default:true})),exclude_watchlisted:Type.Optional(Type.Boolean({default:true}))})},
+
+ {name:'trakt_genres',command:'genres',description:'Read current Trakt genre names/slugs for movie or show discovery. Read-only; use returned slugs with genres filters. Requires configured login.',parameters:Type.Object({type:Type.Optional(Type.Union([Type.Literal('movie'),Type.Literal('show')],{default:'show'}))})},
+
+ ...['copy','move'].map(action=>({name:`trakt_list_${action}`,command:'lists',subcommand:action,
+ description:`Preview or explicitly ${action} 1-100 selected movie/show/season/episode memberships between OWNED lists using numeric LIST IDs and exact MEDIA IDs. Default offline preview. Apply needs expect_user and current ownership. Destination is read back before any source deletion; changed/unverified states stop. No atomic cross-list transaction, automatic mutation retries or rollback. Notes/dates/new ranks are not copied; move refuses note-bearing source entries. Existing destination entries stay untouched. Inspect stage/add_attempted/remove_attempted/partial outcomes.`,
+ parameters:Type.Object({source:Type.String({pattern:'^[1-9][0-9]*$'}),destination:Type.String({pattern:'^[1-9][0-9]*$'}),type:Type.Union(['movie','show','season','episode'].map(t=>Type.Literal(t))),ids:Type.Array(Type.String({pattern:'^[1-9][0-9]*$'}),{minItems:1,maxItems:100,uniqueItems:true}),apply:Type.Optional(Type.Boolean({default:false})),expect_user:Type.Optional(Type.String({minLength:1}))})})),
+
+ {name:'trakt_list_update',command:'lists',subcommand:'update',
+ description:'Rename an OWNED custom list or update its description/privacy. Exact numeric LIST ID required (rename can change slug). Default offline preview; omitted fields stay unchanged, explicit empty description clears. Privacy changes can expose contents: require user authorization for chosen visibility. Apply requires expect_user and fresh account/list ownership checks; optional expect_updated_at refuses stale revision. Readback verifies requested values, unrequested settings and existing item identities/order/notes. No atomic lock, automatic retry or rollback; inspect partial/unknown states.',
+ parameters:Type.Object({list:Type.String({pattern:'^[1-9][0-9]*$'}),name:Type.Optional(Type.String({minLength:1,maxLength:255})),description:Type.Optional(Type.String({maxLength:10000})),privacy:Type.Optional(Type.Union(['private','link','friends','public'].map(x=>Type.Literal(x)))),apply:Type.Optional(Type.Boolean({default:false})),expect_user:Type.Optional(Type.String({minLength:1})),expect_updated_at:Type.Optional(Type.String({minLength:1}))})},
+
+ ...[{name:'trakt_title_details',mode:'details'},{name:'trakt_show_seasons',mode:'seasons'},{name:'trakt_season_episodes',mode:'episodes'},{name:'trakt_episode_details',mode:'episode'}].map(({name,mode})=>({name,command:'titles',subcommand:mode,
+ description:'Read full returned title/season/episode metadata using an exact Trakt MOVIE/SHOW ID. Read-only, no account changes. Season 0 includes specials. Episode air_status uses first_aired relative to as_of: aired/upcoming/unknown; null, missing or invalid dates are unknown, not assumed future. Broadcast time is not watched state or regional streaming availability. Returned ratings are Trakt ratings, not personal scores.',
+ parameters:Type.Object({id:Type.String({pattern:'^[1-9][0-9]*$'}),...(mode==='details'?{type:Type.Optional(Type.Union([Type.Literal('movie'),Type.Literal('show')],{default:'show'}))}:{}),...(['episodes','episode'].includes(mode)?{season:Type.Integer({minimum:0,maximum:10000})}:{}),...(mode==='episode'?{episode:Type.Integer({minimum:0,maximum:10000})}:{})})})),
+
+ ...['trending','popular','recommendations','related'].map(mode=>({
+ name:`trakt_discover_${mode}`,command:'discover',subcommand:mode,
+ description:`Read ${mode} movies/shows from Trakt in service ranking order with full returned metadata and exact string Trakt IDs. Read-only, one page/response; optional complete-history/watchlist exclusion. One episode excludes its show. exclude_ids removes previously seen IDs of this media type. shortlist returns only a list-add preview, never writes; apply later with existing list tool after authorization. Requires configured Trakt login. Recommendations reflect that login, not inferred personal taste. Metadata filters (genres/year/runtime/min_rating/min_votes) apply LOCALLY to this returned page only; all criteria AND, genre choices OR, missing/unrated active fields excluded and counted. Genres use trakt_genres. Show year is premiere year, runtime is per-episode metadata, not total series length. Filtering never refills pages or changes service ranking; no automatic list writes. Related requires exact movie/show media ID. Recommendations has limit only, no page navigation.`,
+ parameters:discoveryParameters(mode)
+ })),
+
+ {name:'trakt_backup_plan_collection', command:'backup', subcommand:'plan-collection',
+ description:'Offline collection observations from validated local source/current ZIPs: missing movie/episode memberships, collected_at and technical metadata conflicts. No login, network, apply mode or writes. Binds archive bytes/account UUID; does not expand nested show summaries. Observed metadata is not a guarantee of writable fields or date fidelity.',
+ parameters:Type.Object({source:Type.String({minLength:1}),current:Type.String({minLength:1})})},
+	{
+		name: 'trakt_backup_restore_collections', command: 'backup', subcommand: 'restore-collections',
+		description: 'Review/restore missing flat movie/episode collection entries with original collected_at and narrowly tested technical values. Default offline preview binds exact ZIP bytes, UUID and batch. Explicit apply, review_id and expect_user required. Fresh existing conflicts refuse the whole batch; no overwrites, removals, automatic mutation replay or rollback. Non-null 3d/HDR and untested fields/values withheld. Readback verifies dates/technical values and pre-existing scope; concurrent writes are not atomically preventable.',
+		parameters: Type.Object({
+			source: Type.String({ minLength: 1 }), current: Type.String({ minLength: 1 }),
+			limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100, default: 100 })),
+			apply: Type.Optional(Type.Boolean({ default: false })),
+			review_id: Type.Optional(Type.String({ pattern: '^[a-f0-9]{64}$' })),
+			expect_user: Type.Optional(Type.String({ minLength: 1 })),
+		}),
+	},	{
+		name: 'trakt_backup_restore_favorites', command: 'backup', subcommand: 'restore-favorites',
+		description: 'Review or explicitly restore missing movie/show FAVORITES MEMBERSHIP only from validated source/current ZIPs. Default offline preview binds archive bytes, account UUID and batch to review_id. Apply requires explicit authorization, matching review_id and expect_user; adds missing membership and verifies existing favorites remain. Ranks, notes and timestamps are NOT restored and server-assigned order may change. Account capacity is checked when known. No removals, automatic mutation retries or rollback; inspect partial/uncertain row states.',
+		parameters: Type.Object({
+			source: Type.String({ minLength: 1 }), current: Type.String({ minLength: 1 }),
+			limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100, default: 100 })),
+			apply: Type.Optional(Type.Boolean({ default: false })),
+			review_id: Type.Optional(Type.String({ pattern: '^[a-f0-9]{64}$' })),
+			expect_user: Type.Optional(Type.String({ minLength: 1 })),
+		}),
+	},
+	{
+		name: 'trakt_backup_restore_ratings', command: 'backup', subcommand: 'restore-ratings',
+		description: 'Review or explicitly restore only missing dated ratings from validated local source/current ZIPs. Default offline preview binds a review_id to exact archive bytes, account UUID and batch. Apply requires explicit authorization, matching review_id and expect_user; live existing ratings are never intentionally overwritten. Values/dates and other ratings in affected scopes are read back. No atomic server insert-if-absent exists: races/updated counts are reported as partial or uncertain, never silently retried or rolled back. Does not restore history, watchlists or other categories.',
+		parameters: Type.Object({
+			source: Type.String({ minLength: 1 }), current: Type.String({ minLength: 1 }),
+			limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100, default: 100 })),
+			apply: Type.Optional(Type.Boolean({ default: false })),
+			review_id: Type.Optional(Type.String({ pattern: '^[a-f0-9]{64}$', description: 'Exact digest from the reviewed offline batch; required with apply=true' })),
+			expect_user: Type.Optional(Type.String({ minLength: 1, description: 'Reviewed current account slug; required with apply=true' })),
+		}),
+	},
+	{
+		name: 'trakt_history_remove_event', command: 'history', subcommand: 'remove-event',
+		description: 'Remove exactly one dated movie/episode watch by HISTORY EVENT ID, never all watches of a title. Default is an offline unverified preview. Require explicit user authorization, apply=true and expect_user to execute. Fresh preflight must match event ID, media type/ID and exact watched_at; success requires scoped readback showing other plays unchanged. Never automatically retry partial/uncertain results. Get string event/media IDs and full timestamp from trakt_history. Unknown-date events are unsupported.',
+		parameters: Type.Object({
+			history_id: Type.String({ pattern: '^[1-9][0-9]*$', description: 'Exact HISTORY EVENT ID as a string, not a movie/show ID' }),
+			type: Type.Union([Type.Literal('movie'), Type.Literal('episode')]),
+			trakt_id: Type.String({ pattern: '^[1-9][0-9]*$', description: 'Exact movie or episode MEDIA ID as a string; never the show ID for an episode' }),
+			watched_at: Type.String({ minLength: 1, description: 'Exact ISO8601 watch timestamp from history, including fractional seconds if present' }),
+			expect_user: Type.Optional(Type.String({ minLength: 1, description: 'Required with apply=true: freshly authenticated account slug must match' })),
+			apply: Type.Optional(Type.Boolean({ default: false })),
+		}),
+	},
+	...preferenceTools(),
+	{
+		name: 'trakt_list_create', command: 'lists', subcommand: 'create',
+		description: 'Create an owned custom list. Defaults to offline preview; apply=true explicitly writes to the authenticated account. Privacy defaults private. Preview first and obtain user authorization for the write. Do not blindly retry after an uncertain outcome.',
+		parameters: Type.Object({
+			name: Type.String({ minLength: 1, description: 'New list name' }),
+			description: Type.Optional(Type.String({ description: 'List description' })),
+			privacy: Type.Optional(Type.Union(['private', 'link', 'friends', 'public'].map(value => Type.Literal(value)), { description: 'Privacy; default private' })),
+			apply: Type.Optional(Type.Boolean({ default: false, description: 'Explicitly execute the write; otherwise preview without login or network' })),
+		}),
+	},
+	...(['add', 'remove'] as const).map(action => ({
+		name: `trakt_list_${action}`, command: 'lists', subcommand: action,
+		description: `${action === 'add' ? 'Add' : 'Remove'} media on an owned custom list by Trakt MEDIA IDs. Defaults to offline preview; apply=true explicitly writes. No title guessing, whole-list deletion or history edits. Inspect partial/not_found results; do not automatically retry uncertain writes.`,
+		parameters: Type.Object({
+			list: Type.String({ minLength: 1, description: 'Owned list ID or slug' }),
+			type: Type.Union(['movie', 'show', 'season', 'episode'].map(value => Type.Literal(value))),
+			ids: Type.Array(Type.String({ pattern: '^[1-9][0-9]*$' }), { minItems: 1, maxItems: 10000, uniqueItems: true, description: 'Trakt MEDIA IDs as strings, not list-entry IDs' }),
+			apply: Type.Optional(Type.Boolean({ default: false, description: 'Execute the explicitly authorized write; default preview' })),
+		}),
+	})),
+	{
+		name: 'trakt_list_notes', command: 'lists', subcommand: 'notes',
+		description: 'Edit notes for one owned custom-list ENTRY ID, not a media ID. VIP only; empty notes clears them. Defaults offline preview; apply=true explicitly writes after VIP verification. Preview and obtain user authorization before applying.',
+		parameters: Type.Object({
+			list: Type.String({ minLength: 1 }),
+			item: Type.String({ pattern: '^[1-9][0-9]*$', description: 'List ENTRY ID from trakt_list_items' }),
+			notes: Type.String({ maxLength: 500, description: 'New notes; explicitly empty clears them (VIP)' }),
+			apply: Type.Optional(Type.Boolean({ default: false })),
+		}),
+	},
+	{
+		name: 'trakt_list_reorder', command: 'lists', subcommand: 'reorder',
+		description: 'Reorder an owned custom list using ALL current list ENTRY IDs, not media IDs. Defaults offline preview. apply=true verifies complete membership and stable metadata before writing; no transactional lock is available. The list display sort may need rank to show manual order; this command does not change that setting. Obtain user authorization before applying.',
+		parameters: Type.Object({
+			list: Type.String({ minLength: 1 }),
+			rank: Type.Array(Type.String({ pattern: '^[1-9][0-9]*$' }), { minItems: 1, maxItems: 10000, uniqueItems: true, description: 'Complete list ENTRY IDs in desired order' }),
+			apply: Type.Optional(Type.Boolean({ default: false })),
+		}),
+	},
 	{
 		name: 'trakt_search',
 		command: 'search',
@@ -100,7 +252,7 @@ const TOOLS: ToolDef[] = [
 		command: 'history',
 		subcommand: 'remove',
 		description:
-			'Remove movies or shows from Trakt.tv watch history (undo a mark-as-watched). Searches by title; removing a show wipes ALL its episode plays, removing a movie wipes all its watches. There is no per-watch granular removal.',
+			'Remove movies or shows from Trakt.tv watch history (undo a mark-as-watched). Searches by title; removing a show wipes ALL its episode plays, removing a movie wipes all its watches. Use trakt_history_remove_event instead to remove one dated watch.',
 		parameters: Type.Object({
 			titles: Type.Array(Type.String(), {
 				description: 'Title(s) to remove from history',
@@ -111,6 +263,64 @@ const TOOLS: ToolDef[] = [
 					description: 'Content type (default: show)',
 				})
 			),
+		}),
+	},
+	{
+		name: 'trakt_backup',
+		command: 'backup',
+		description:
+			'Create a new local ZIP covering raw history, lists, ratings, collections, favorites, playback, watched summaries, hidden items, comments/replies, notes, social/like data, saved filters and account snapshots. Includes checksums, counts and explicit API-scope completeness, not guaranteed website-field parity. Collaborated lists include metadata only. Never overwrites files or changes Trakt. Contains private data; use on user request. Failures retain a partial ZIP marked incomplete; do not retry after rate limiting until the stated interval has passed.',
+		parameters: Type.Object({
+			output: Type.String({ minLength: 1, description: 'New local ZIP path; must not already exist' }),
+			limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000, description: 'Records per API page (default 1000)' })),
+			delay_ms: Type.Optional(Type.Integer({ minimum: 0, description: 'Minimum milliseconds between requests (default 1000)' })),
+			max_pages: Type.Optional(Type.Integer({ minimum: 1, description: 'Maximum pages per resource (default 10000); hitting it makes export incomplete' })),
+			timeout_seconds: Type.Optional(Type.Integer({ minimum: 1, maximum: 86400, description: 'Export time budget in seconds (default 600, maximum 86400). Expiry finalizes an incomplete ZIP; increase for large or slow accounts.' })),
+			website_supplement: Type.Optional(Type.String({ minLength: 1, description: 'Local JSON from backup import-supplement; fills only missing website-only account fields, preserves raw API snapshots and records historical provenance' })),
+		}),
+	},
+	{
+		name: 'trakt_backup_plan_restore',
+		command: 'backup',
+		subcommand: 'plan-restore',
+		description: 'Read-only restore preview from two local validated ZIPs, requiring matching accounts. Reports missing watches, watchlist items, ratings and custom-list gaps. Conflicts and unsupported data are withheld from optional Trakt website import JSON. Current is a supplied snapshot, not live account state; refresh with trakt_backup first. Does not import, delete, call Trakt, or load credentials. Private output includes IDs, dates and ratings; use only on user request.',
+		parameters: Type.Object({
+			source: Type.String({ minLength: 1, description: 'Backup containing desired records' }),
+			current: Type.String({ minLength: 1, description: 'Fresh current-account backup ZIP, preferably just created with trakt_backup' }),
+			import_json: Type.Optional(Type.String({ minLength: 1, description: 'Optional NEW local review-only import JSON file; never overwritten or imported automatically' })),
+		}),
+	},
+	{
+		name: 'trakt_backup_compare',
+		command: 'backup',
+		subcommand: 'compare',
+		description: 'Read-only local comparison of two backup ZIPs. Validates native manifest checksums/counts/IDs and refuses partial backups; website-layout ZIPs get CRC/JSON/ID checks but unknown completeness. Reports coverage-aware additions, removals and changed field paths, never before/after values. Historical supplements require freshness review. No Trakt login, network calls, restore or file modifications.',
+		parameters: Type.Object({
+			before: Type.String({ minLength: 1, description: 'Earlier local ZIP path' }),
+			after: Type.String({ minLength: 1, description: 'Later local ZIP path' }),
+			sample_limit: Type.Optional(Type.Integer({ minimum: 0, maximum: 100, description: 'Maximum ID/field-path samples per change type and resource (default 10)' })),
+		}),
+	},
+	{
+		name: 'trakt_lists',
+		command: 'lists',
+		description:
+			'Read your custom lists, including private lists accessible to your authenticated account. Returns original API metadata and pagination. Read-only; not a full account backup.',
+		parameters: Type.Object({
+			page: Type.Optional(Type.Integer({ minimum: 1, description: 'Page number (default 1)' })),
+			limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000, description: 'Items per page (default 10)' })),
+		}),
+	},
+	{
+		name: 'trakt_list_items',
+		command: 'lists',
+		subcommand: 'items',
+		description:
+			'Read one custom list by Trakt ID or slug from trakt_lists. Preserves returned rank, IDs, listed_at, notes and mixed item types. Follow pagination for complete contents. Read-only; only fields returned by the API are available.',
+		parameters: Type.Object({
+			list: Type.String({ minLength: 1, description: 'Custom list Trakt ID or slug (not its display name)' }),
+			page: Type.Optional(Type.Integer({ minimum: 1, description: 'Page number (default 1)' })),
+			limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000, description: 'Items per page (default 10)' })),
 		}),
 	},
 	{
@@ -168,7 +378,7 @@ const TOOLS: ToolDef[] = [
 		name: 'trakt_calendar',
 		command: 'calendar',
 		description:
-			'Show upcoming episodes of shows you watch. Returns forward-looking airings within a date window. Use for proactive "what airs next?" workflows — this is the only trakt tool that returns future data.',
+			'Show upcoming episodes of shows you watch. Returns forward-looking airings within a date window. Use for proactive "what airs next?" workflows — this returns a personalized airing window; title browsing can also expose future broadcast dates.',
 		parameters: Type.Object({
 			days: Type.Optional(
 				Type.Number({ description: 'Number of days to look ahead (default 7)' })
@@ -284,6 +494,7 @@ function buildCliArgs(
 	if (Array.isArray(params.titles)) positionals.push(...(params.titles as string[]));
 
 	for (const [key, value] of Object.entries(params)) {
+		if (['shortlist','seeded-related'].includes(command) && value===false && ['exclude_watched','exclude_watchlisted'].includes(key)){args.push(`--${key.replace(/_/g,'-')}=false`);continue;}
 		if (key === 'query' || key === 'titles' || value === undefined || value === false) continue;
 		const flag = `--${key.replace(/_/g, '-')}`;
 		if (value === true) args.push(flag);
@@ -426,7 +637,12 @@ export default definePluginEntry({
 							error: 'This trakt-cli does not support nonblocking authentication. Update trakt-cli, or run trakt-cli auth locally.',
 						}));
 					}
-					if (tool.command !== 'auth' && !isAuthConfigured()) {
+					const localComparison = tool.command === 'backup' && (tool.subcommand === 'compare' || tool.subcommand === 'plan-restore' || tool.subcommand === 'plan-collection');
+					const listPreview = tool.command === 'lists' && ['create', 'add', 'remove', 'notes', 'reorder', 'update', 'copy', 'move'].includes(tool.subcommand ?? '') && params.apply !== true;
+					const preferencePreview = ['ratings', 'favorites'].includes(tool.command) && ['set', 'add', 'remove'].includes(tool.subcommand ?? '') && params.apply !== true;
+					const historyEventPreview = tool.command === 'history' && tool.subcommand === 'remove-event' && params.apply !== true;
+					const restorePreview = tool.command === 'backup' && ['restore-ratings', 'restore-favorites', 'restore-collections'].includes(tool.subcommand ?? '') && params.apply !== true;
+					if (tool.command !== 'auth' && !localComparison && !listPreview && !preferencePreview && !historyEventPreview && !restorePreview && !isAuthConfigured()) {
 						return toolResult(
 							JSON.stringify(
 								{
@@ -441,7 +657,12 @@ export default definePluginEntry({
 					}
 
 					try {
-						const args = buildCliArgs(tool.command, tool.subcommand, params);
+						const backupExport = tool.command === 'backup' && !tool.subcommand;
+						const backupSeconds = typeof params.timeout_seconds === 'number' ? params.timeout_seconds : 600;
+						// Always send the budget. Older CLIs must refuse the unknown flag before
+						// creating an archive rather than silently relying on a destructive timeout.
+						const cliParams = backupExport ? { ...params, timeout_seconds: backupSeconds } : params;
+						const args = buildCliArgs(tool.command, tool.subcommand, cliParams);
 						const env = tool.command === 'auth' ? authEnvironment(config) : undefined;
 						// 30s was too tight for `progress`, which iterates ~50 API calls
 						// (watchlist + watched + N× GetShowProgress) and empirically runs
@@ -452,7 +673,10 @@ export default definePluginEntry({
 						// flag so per-show progress checks don't hammer 50 API calls.
 						const { stdout } = await runCli(cliPath, args, {
 							// sync walks several services plus per-show history lookups.
-							timeout: tool.command === 'sync' ? 600_000 : 120_000,
+							// Reserve 30s for manifest/ZIP closure after cooperative cancellation.
+							timeout: backupExport ? backupSeconds * 1000 + 30_000 : ['sync', 'backup'].includes(tool.command) ? 600_000 : 120_000,
+							// A hung CLI must remain bounded even though it handles SIGTERM.
+							killSignal: backupExport ? 'SIGKILL' : undefined,
 							maxBuffer: 4 * 1024 * 1024,
 							env,
 						});
@@ -484,6 +708,30 @@ export default definePluginEntry({
 								? String((error as { stderr: unknown }).stderr).trim()
 								: '';
 						const errorOutput = stderr ? `${message}\n\nstderr: ${stderr}` : message;
+						let shortlistOperation: Record<string, unknown> | undefined;
+ if(['shortlist','episode-tonight','seeded-related'].includes(tool.command) && error && typeof error==='object' && 'stdout' in error){try{const op=JSON.parse(String((error as {stdout:unknown}).stdout));if(['watch_tonight','episode_tonight','seeded_related'].includes(op?.kind) && op.scan_succeeded===false && Array.isArray(op.items) && typeof op.stop_reason==='string')shortlistOperation=op;}catch{/* Keep ordinary diagnostics; never replay a scan automatically. */}}
+
+						let backupOperation: Record<string, unknown> | undefined;
+						if (tool.command === 'backup' && !tool.subcommand && error && typeof error === 'object' && 'stdout' in error) {
+							try {
+								const operation = JSON.parse(String((error as { stdout: unknown }).stdout));
+								if (operation?.output === params.output && operation.version === 1 && operation.complete === false && Array.isArray(operation.errors) && operation.errors.length > 0 && Array.isArray(operation.files) && Array.isArray(operation.resources)) backupOperation = operation;
+							} catch { /* A watchdog kill cannot promise a finalized archive. */ }
+						}
+						let historyOperation: Record<string, unknown> | undefined;
+						let ratingRestoreOperation: Record<string, unknown> | undefined;
+						if (tool.command === 'backup' && ['restore-ratings', 'restore-favorites', 'restore-collections'].includes(tool.subcommand ?? '') && params.apply === true && error && typeof error === 'object' && 'stdout' in error) {
+							try {
+								const operation = JSON.parse(String((error as { stdout: unknown }).stdout));
+								if (typeof params.review_id === 'string' && operation?.review_id === params.review_id && typeof operation.attempted === 'boolean' && operation.verified === false && ['not_attempted', 'unknown', 'partial'].includes(operation.outcome)) ratingRestoreOperation = operation;
+							} catch { /* Never replay an uncertain restore. */ }
+						}
+						if (tool.command === 'history' && tool.subcommand === 'remove-event' && params.apply === true && error && typeof error === 'object' && 'stdout' in error) {
+							try {
+								const operation = JSON.parse(String((error as { stdout: unknown }).stdout));
+								if (operation?.target?.history_id === params.history_id && typeof operation.attempted === 'boolean' && operation.verified === false && ['not_attempted', 'unknown'].includes(operation.outcome)) historyOperation = operation;
+							} catch { /* Keep the ordinary error; never replay an uncertain deletion. */ }
+						}
 
 						// Detect rate-limit markers emitted by the Go CLI's RateLimitError
 						// (see api/api.go). The CLI formats the error as:
@@ -503,6 +751,7 @@ export default definePluginEntry({
 									{
 										success: false,
 										rate_limited: true,
+										...(historyOperation || ratingRestoreOperation || shortlistOperation || backupOperation ? { operation: historyOperation ?? ratingRestoreOperation ?? shortlistOperation ?? backupOperation } : {}),
 										retry_after_seconds: retryAfter,
 										error:
 											'Trakt API rate-limited this request' +
@@ -516,6 +765,22 @@ export default definePluginEntry({
 							);
 						}
 
+						if (backupOperation) return toolResult(JSON.stringify({ success: false, error: errorOutput, operation: backupOperation }, null, 2));
+						if(shortlistOperation) return toolResult(JSON.stringify({success:false,error:errorOutput,operation:shortlistOperation},null,2));
+						if (historyOperation) return toolResult(JSON.stringify({ success: false, error: errorOutput, operation: historyOperation }, null, 2));
+						if (ratingRestoreOperation) return toolResult(JSON.stringify({ success: false, error: errorOutput, operation: ratingRestoreOperation }, null, 2));
+						// The CLI exits nonzero for partial writes, but stdout retains
+						// structured outcome/counts so callers can inspect before retrying.
+						const listWrite = tool.command === 'lists' && ['create', 'add', 'remove', 'notes', 'reorder', 'update', 'copy', 'move'].includes(tool.subcommand ?? '');
+						const preferenceWrite = ['ratings', 'favorites'].includes(tool.command) && ['set', 'add', 'remove'].includes(tool.subcommand ?? '');
+						if ((listWrite || preferenceWrite) && params.apply === true && error && typeof error === 'object' && 'stdout' in error) {
+							try {
+								const operation = JSON.parse(String((error as { stdout: unknown }).stdout));
+								if (operation?.action === tool.subcommand && (!preferenceWrite || operation.resource === tool.command) && ['not_attempted', 'unknown', 'partial'].includes(operation.outcome)) {
+									return toolResult(JSON.stringify({ success: false, error: errorOutput, operation }, null, 2));
+								}
+							} catch { /* Fall through to the ordinary error without replay. */ }
+						}
 						return toolResult(
 							JSON.stringify({ success: false, error: errorOutput }, null, 2)
 						);
