@@ -49,7 +49,7 @@ jobs:
       - name: Install + build (compile TS so publish has dist/)
         run: |
           cd openclaw
-          npm install
+          npm ci
           npm run build
 
       - name: Publish to NPM (OIDC trusted publishing)

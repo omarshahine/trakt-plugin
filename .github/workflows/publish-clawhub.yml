@@ -46,7 +46,7 @@ jobs:
       - name: Install + build (compile TS so clawhub validator finds dist/)
         run: |
           cd openclaw
-          npm install
+          npm ci
           npm run build
 
       - name: Sync manifest version to tag (tag is source of truth)

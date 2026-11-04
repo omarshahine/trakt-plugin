@@ -96,8 +96,27 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           registry-url: https://registry.npmjs.org
+      # PR checks also run in separate workflows. Gate publishing on this exact
+      # main commit rather than racing those workflows after merge.
+      - name: Verify release manifest versions
+        uses: omarshahine/version-consistency-action@v1
+        with:
+          sets: |
+            - name: "Trakt plugin"
+              sources:
+                - .claude-plugin/plugin.json:.version
+                - marketplace.json:.plugins[0].version
+                - openclaw/package.json:.version
+                - openclaw/openclaw.plugin.json:.version
+      - name: Validate plugin before release
+        working-directory: openclaw
+        run: |
+          npm ci
+          npm test
+          npx tsc --noEmit
+          npm run plugin:ci
       - name: Release
         id: semantic
         env:
