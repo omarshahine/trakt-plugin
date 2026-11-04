@@ -43,3 +43,11 @@ Reproduce with `cd openclaw && npm ci --ignore-scripts`, `npm audit --json`, and
 ## Validation
 
 `npm ci --ignore-scripts` completed, all 48 plugin tests passed, and `tsc --noEmit` passed. The mock-SDK plugin inspector passed with zero breakages and its two existing proof gaps (cold dependency installation and source-entry loader coverage). `npm pack --dry-run --ignore-scripts` reported no bundled dependencies or `node_modules` entries. This establishes the tested plugin build and packaging behavior; it does not validate vulnerable SDK server features or clear the remaining development audit.
+
+## Pinned inspector follow-up
+
+The package now declares exact development dependency `@openclaw/plugin-inspector@0.4.5`. This is the version explicitly installed by the successful [main plugin CI run](https://github.com/omarshahine/trakt-plugin/actions/runs/41899310907). Both inspector npm scripts invoke the local executable, and the inspector workflow uses `npm run plugin:ci`. `npm ci` now obtains the inspector and its transitive dependencies from the committed lockfile rather than resolving a new inspector release through unversioned `npx` at execution time.
+
+The added tooling increases the lockfile development graph from 394 to 407 nodes. Fresh full and production-only audits have the same results: 17 affected development package nodes (2 critical, 10 high, 5 moderate), zero production findings, and no new advisory packages. The OpenClaw shrinkwrap assessment above remains unchanged. No existing dependency receives a forced major upgrade; the inspector's own TypeScript dependency is nested separately from the plugin's TypeScript 5.9 development compiler.
+
+After a fresh `npm ci --ignore-scripts`, all 49 plugin tests and `tsc --noEmit` passed. The locally installed inspector passed with zero breakages and the same two existing proof gaps. No release version was changed by this tooling update.

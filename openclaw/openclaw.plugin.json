@@ -2,7 +2,7 @@
   "id": "trakt-tools",
   "name": "Trakt",
   "description": "Track movies and TV shows using trakt.tv",
-  "version": "1.12.0",
+  "version": "1.12.1",
   "configSchema": {
     "type": "object",
     "properties": {
@@ -66,7 +66,6 @@
       "trakt_discover_related",
       "trakt_history",
       "trakt_history_add",
-      "trakt_history_remove",
 	  "trakt_history_remove_event",
 	  "trakt_backup_restore_ratings",
 	  "trakt_backup_restore_favorites",

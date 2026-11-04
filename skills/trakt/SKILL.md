@@ -133,18 +133,17 @@ trakt-cli history add --rewatch "Severance" --json
   and exits 1 with `{"error": ..., "retry_after": N}` (marker also on
   stderr) — wait out `retry_after` before calling any trakt tool again
 
-### Undo Mark as Watched
+### Remove One Watch
 
-```bash
-trakt-cli history remove "Severance" --json
-trakt-cli history remove --type movie "The Godfather" --json
-```
+Use `history remove-event` with the exact string history-event ID, movie/episode
+media ID, and full `watched_at` timestamp returned by history. First preview
+without `--apply`. Apply only after explicit user authorization, with the same
+exact guards and `--expect-user` matching the account. Inspect the structured
+outcome and never replay uncertain deletions.
 
-- Removes ALL plays of the matched item — there is no per-watch granular removal
-- Removing a show wipes all its episode plays; removing a movie wipes all its watches
-- `--type show` (default) or `--type movie`
-- JSON output: `{ "deleted_movies", "deleted_episodes", "not_found_movies", "not_found_shows" }`
-- **Warning:** destructive. Confirm with the user before calling on a show with heavy watch history
+Do not call the legacy title-based `history remove` command from an agent.
+It can erase every play of a matched title. The OpenClaw bulk-removal tool has
+been removed; use `trakt_history_remove_event` for one dated event.
 
 ### Streaming Sync (opt-in)
 

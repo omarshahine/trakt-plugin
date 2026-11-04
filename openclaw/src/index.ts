@@ -248,24 +248,6 @@ const TOOLS: ToolDef[] = [
 		}),
 	},
 	{
-		name: 'trakt_history_remove',
-		command: 'history',
-		subcommand: 'remove',
-		description:
-			'Remove movies or shows from Trakt.tv watch history (undo a mark-as-watched). Searches by title; removing a show wipes ALL its episode plays, removing a movie wipes all its watches. Use trakt_history_remove_event instead to remove one dated watch.',
-		parameters: Type.Object({
-			titles: Type.Array(Type.String(), {
-				description: 'Title(s) to remove from history',
-				minItems: 1,
-			}),
-			type: Type.Optional(
-				Type.Union([Type.Literal('movie'), Type.Literal('show')], {
-					description: 'Content type (default: show)',
-				})
-			),
-		}),
-	},
-	{
 		name: 'trakt_backup',
 		command: 'backup',
 		description:
