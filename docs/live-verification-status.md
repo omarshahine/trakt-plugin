@@ -230,3 +230,7 @@ Implemented locally: `episode-tonight` / `trakt_episode_tonight`. Five real dedi
 ## Preference-seeded related recommendations (November 3)
 
 Local `seeded-related` / `trakt_seeded_related` passed six real dedicated-test-account plugin cases: combined seeds, favorite movies, rating shows, no seeds, seed budget and watchlist opt-out. Independent raw preference/related audits confirmed all returned provenance. Ratings, favorites, history, watchlist and credential bytes remained unchanged. Overlapping multi-seed provenance remains synthetic-tested, not observed live. See [contract](seeded-related.md). Nothing submitted, installed or released.
+
+## Read-only list comparison (November 3)
+
+Two real plugin self-comparisons matched all four existing test-list items; raw metadata/items and credentials unchanged. Distinct-list reconciliation, limits, note-loss protection and changing-revision refusal passed synthetic tests. Only one owned list available; no mutation used to expand fixtures. See [scope](list-comparison.md). Local only.

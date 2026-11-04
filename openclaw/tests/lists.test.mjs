@@ -371,3 +371,6 @@ test('seeded-related retains partial connections on a rate limit without replay'
  const tool=tools.find(t=>t.name==='trakt_seeded_related');const n=calls.length;mutationFailure=Object.assign(new Error('synthetic rate limit'),{stdout:JSON.stringify({kind:'seeded_related',scan_succeeded:false,stop_reason:'request_failed',items:[{trakt_id:'55',related_to:[{trakt_id:'66'}]}]}),stderr:'rate limited by trakt api: 429 (retry_after=60)'});
  try{const result=await tool.execute('test',{});const r=JSON.parse(result.content[0].text);assert.equal(calls.length,n+1);assert.equal(r.rate_limited,true);assert.equal(r.operation.items[0].related_to[0].trakt_id,'66');}finally{mutationFailure=undefined;}
 });
+
+
+test('list comparison is read-only and forwards bounded proposals literally',async()=>{const tool=tools.find(t=>t.name==='trakt_list_compare');assert.ok(tool);assert.ok(!tool.parameters.properties.apply);await tool.execute('test',{source:'10',destination:'20',limit:3});assert.deepEqual(calls.at(-1).args,['lists','compare','--source','10','--destination','20','--limit','3','--json']);const n=calls.length;await tool.execute('test',{source:'10',destination:'20',apply:true});assert.equal(calls.length,n);});

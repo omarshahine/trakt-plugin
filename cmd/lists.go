@@ -26,7 +26,7 @@ func newListsCmd() *cobra.Command {
 	}
 	items.Flags().String("list", "", "Custom list Trakt ID or slug (required)")
 	_ = items.MarkFlagRequired("list")
-	lists.AddCommand(items)
+	lists.AddCommand(items, newListCompareCmd())
 	addListMutationCommands(lists)
 	return lists
 }

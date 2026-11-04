@@ -354,3 +354,5 @@ Optional list target produces an unapplied preview only. See
 ### Preference-seeded related titles
 
 `trakt_seeded_related` reads favorites/high personal ratings and bounded related-title pages, excludes watched titles and preserves factual seed connections. No inferred taste score or account writes. See [scope and evidence](../docs/seeded-related.md).
+
+`trakt_list_compare` reads owned lists and produces bounded copy/removal previews only. See [contract](../docs/list-comparison.md).
