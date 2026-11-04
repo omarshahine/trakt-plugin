@@ -85,14 +85,27 @@ jobs:
           EXPECTED: ${{ steps.version.outputs.version }}
         run: |
           for attempt in $(seq 1 20); do
-            PUBLISHED=$(clawhub package inspect trakt-tools 2>/dev/null               | sed -n 's/^Latest:[[:space:]]*//p' | head -1)
-            echo "attempt $attempt: ClawHub reports '${PUBLISHED:-unknown}' (expecting $EXPECTED)"
+            METADATA=$(clawhub package inspect trakt-tools --json 2>/dev/null || true)
+            RESULT=$(printf '%s' "$METADATA" | node -e '
+              try {
+                const p = JSON.parse(require("fs").readFileSync(0, "utf8")).package;
+                console.log([p.latestVersion, p.scanStatus, p.verification?.sourceCommit].join(" "));
+              } catch { console.log("unknown unknown unknown"); }
+            ')
+            read -r PUBLISHED SCAN SOURCE_COMMIT <<< "$RESULT"
+            echo "attempt $attempt: version=${PUBLISHED:-unknown} scan=${SCAN:-unknown} (expecting $EXPECTED)"
             if [ "$PUBLISHED" = "$EXPECTED" ]; then
-              echo "ClawHub published $EXPECTED"
-              exit 0
+              if [ "$SCAN" = "suspicious" ] || [ "$SCAN" = "malicious" ]; then
+                echo "::error::ClawHub published $EXPECTED with scan status $SCAN. Review the stored scan; do not resubmit or override the result."
+                exit 1
+              fi
+              if [ "$SCAN" = "clean" ] && [ "$SOURCE_COMMIT" = "$GITHUB_SHA" ]; then
+                echo "ClawHub published clean $EXPECTED from $SOURCE_COMMIT"
+                exit 0
+              fi
             fi
             sleep 30
           done
-          echo "::error::ClawHub never published $EXPECTED (still on '${PUBLISHED:-unknown}' after 10 minutes)."
+          echo "::error::ClawHub never verified clean $EXPECTED (still on '${PUBLISHED:-unknown}' after 10 minutes)."
           echo "::error::A publish can sit in security scanning; re-check before assuming failure."
           exit 1

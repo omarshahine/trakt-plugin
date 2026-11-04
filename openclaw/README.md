@@ -13,7 +13,7 @@ openclaw plugins install trakt-tools
 The `trakt-cli` Go binary must be installed and on your PATH:
 
 ```bash
-go install github.com/omarshahine/trakt-plugin@latest
+go install github.com/omarshahine/trakt-plugin@v1.12.1
 ```
 
 Or set `TRAKT_CLI_PATH` environment variable, or configure `cliPath` in plugin settings.
@@ -58,6 +58,9 @@ and explicit authorization. Partial/uncertain operations preserve row states;
 never retry them blindly. See [ratings restore limits and race semantics](../docs/ratings-restore.md).
 
 ### Precise history-event removal
+
+The legacy title-based bulk history-removal tool has been removed from the
+agent surface. It could erase every watch of a matched movie or show.
 
 For granular removal, first read the `history_id`, `trakt_id` and exact
 `watched_at` returned by `trakt_history`. `trakt_history_remove_event` defaults

@@ -116,7 +116,11 @@ JSON output includes a `queries` array with per-query detail for every requested
 
 ### history remove
 
-Undo a mark-as-watched. Removing a show wipes ALL its episode plays; removing a movie wipes all its watches. There is no per-watch granular removal — Trakt's API removes by trakt id, not by timestamp.
+Legacy manual CLI command. Agent tools do not expose this bulk deletion path;
+use preview-first `trakt_history_remove_event` to remove one dated watch.
+
+Undo a mark-as-watched. Removing a show wipes ALL its episode plays; removing a movie wipes all its watches. This legacy command removes all plays by media ID. For one dated watch, use
+`history remove-event` with the exact history-event ID and matching guards.
 
 ```bash
 trakt-cli history remove "Severance" --json
@@ -277,7 +281,7 @@ Exit status is non-zero when any source fails (other sources still sync), which 
 
 ### OpenClaw
 
-The `openclaw/` directory contains a native OpenClaw plugin that registers typed tools: `trakt_search`, `trakt_history`, `trakt_history_add`, `trakt_history_remove`, `trakt_watchlist`, `trakt_watchlist_add`, `trakt_watchlist_remove`, `trakt_calendar`, `trakt_progress`, and `trakt_auth`. The opt-in `trakt_sync` tool is registered only when `syncEnabled` is true.
+The `openclaw/` directory contains a native OpenClaw plugin that registers typed tools: `trakt_search`, `trakt_history`, `trakt_history_add`, `trakt_history_remove_event`, `trakt_watchlist`, `trakt_watchlist_add`, `trakt_watchlist_remove`, `trakt_calendar`, `trakt_progress`, and `trakt_auth`. The opt-in `trakt_sync` tool is registered only when `syncEnabled` is true.
 
 Install from ClawHub:
 ```bash

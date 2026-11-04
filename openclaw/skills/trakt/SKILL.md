@@ -109,6 +109,15 @@ trakt-cli history add --rewatch "Severance" --json
   and exits 1 with `{"error": ..., "retry_after": N}` (marker also on
   stderr) — wait out `retry_after` before calling any trakt tool again
 
+### Remove One Watch
+
+Use `trakt_history_remove_event` with the exact string history-event ID,
+movie/episode media ID and full timestamp from history. Preview first; apply
+only with explicit user authorization and a matching `expect_user`. Never
+replay an uncertain deletion. The legacy title-based bulk deletion tool has
+been removed. Do not fall back to CLI `history remove`, which erases every
+watch of a matched title.
+
 ### Streaming Sync (opt-in)
 
 Only if the user has set up `~/.config/trakt-cli/sync.yaml` (otherwise `sync` reports `"enabled": false` and does nothing).

@@ -37,7 +37,6 @@ test('all positional tool inputs follow supported flags and the option terminato
 	const cases = [
 		['trakt_search', { query: '--help', type: 'show' }, ['search', '--type', 'show', '--json', '--', '--help']],
 		['trakt_history_add', { titles: ['--rewatch', 'Synthetic Show'], type: 'show', watched_at: '2026-01-01' }, ['history', 'add', '--type', 'show', '--watched-at', '2026-01-01', '--json', '--', '--rewatch', 'Synthetic Show']],
-		['trakt_history_remove', { titles: ['--type=movie'] }, ['history', 'remove', '--json', '--', '--type=movie']],
 		['trakt_watchlist_add', { titles: ['--help'] }, ['watchlist', 'add', '--json', '--', '--help']],
 		['trakt_watchlist_remove', { titles: ['--', '$(printf SYNTHETIC)'] }, ['watchlist', 'remove', '--json', '--', '--', '$(printf SYNTHETIC)']],
 	];
@@ -194,4 +193,13 @@ test('auth display fields accept only bounded codes and Trakt verification URLs'
 		assert.equal(JSON.stringify(result).includes(secret), false);
 		assert.equal(JSON.stringify(result).includes(encodedSecret), false);
 	}
+});
+
+
+test('title-based bulk history deletion is absent from the agent tool surface', () => {
+ for (const config of [{}, { syncEnabled: true }]) {
+  const tools = registered(config);
+  assert.equal(tools.trakt_history_remove, undefined);
+  assert.ok(tools.trakt_history_remove_event);
+ }
 });
