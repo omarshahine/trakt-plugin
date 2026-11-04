@@ -234,3 +234,7 @@ Local `seeded-related` / `trakt_seeded_related` passed six real dedicated-test-a
 ## Read-only list comparison (November 3)
 
 Two real plugin self-comparisons matched all four existing test-list items; raw metadata/items and credentials unchanged. Distinct-list reconciliation, limits, note-loss protection and changing-revision refusal passed synthetic tests. Only one owned list available; no mutation used to expand fixtures. See [scope](list-comparison.md). Local only.
+
+## Distinct-list comparison acceptance follow-up (November 3)
+
+The earlier distinct-list live-test gap is closed: four actual plugin cases passed using two explicitly authorized disposable private test-account lists. Full/limited/reverse/self results, note conflicts, note-bearing removal withholding and proposal direction/counts matched independent seeded records. Proposals were never applied. Both fixtures were deleted; final list inventory confirmed absence. Original list metadata/four item records and credentials remained exact. See [acceptance evidence](list-comparison.md#distinct-list-live-acceptance). No implementation change, installation or release.
