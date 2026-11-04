@@ -624,3 +624,5 @@ Discovery now supports explicit page-local genre/year/runtime/rating/vote criter
 Bounded watch-tonight shortlists: [multi-page collection, factual fit and stop reasons](docs/watch-tonight.md).
 
 Episode-aware continuations: see [next episodes for tonight](docs/episode-tonight.md) for bounded, read-only suggestions from started shows.
+
+Explainable preference-seeded discovery: see [seeded related titles](docs/seeded-related.md).

@@ -226,3 +226,7 @@ are synthetic-tested; no global completeness, availability or taste claim.
 ## Episode-aware tonight suggestions (November 3)
 
 Implemented locally: `episode-tonight` / `trakt_episode_tonight`. Five real dedicated-test-account plugin cases passed: three verified next episodes, two within 45 minutes, no-fit runtime, one-show budget and specials-option query. Raw progress independently matched returned IDs and incomplete flags; original 11 history events and credential bytes remained unchanged. Positive specials, future/unknown dates and failures remain synthetic-tested. See [full contract](episode-tonight.md). Not installed, submitted or released.
+
+## Preference-seeded related recommendations (November 3)
+
+Local `seeded-related` / `trakt_seeded_related` passed six real dedicated-test-account plugin cases: combined seeds, favorite movies, rating shows, no seeds, seed budget and watchlist opt-out. Independent raw preference/related audits confirmed all returned provenance. Ratings, favorites, history, watchlist and credential bytes remained unchanged. Overlapping multi-seed provenance remains synthetic-tested, not observed live. See [contract](seeded-related.md). Nothing submitted, installed or released.

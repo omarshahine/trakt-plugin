@@ -360,3 +360,14 @@ test('episode-tonight preserves partial suggestions on errors without replay',as
  mutationFailure=Object.assign(new Error('synthetic scan failure'),{stdout:JSON.stringify({kind:'episode_tonight',scan_succeeded:false,items:[{show_trakt_id:'55'}],stop_reason:'request_failed'}),stderr:'HTTP 503'});
  try{const result=await tool.execute('test',{});const r=JSON.parse(result.content[0].text);assert.equal(calls.length,before+1);assert.equal(r.operation.items[0].show_trakt_id,'55');assert.equal(r.operation.scan_succeeded,false);}finally{mutationFailure=undefined;}
 });
+
+
+test('seeded-related exposes bounded seed controls and literal watchlist opt-out',async()=>{
+ const tool=tools.find(t=>t.name==='trakt_seeded_related');const manifest=JSON.parse(readFileSync(new URL('../openclaw.plugin.json',import.meta.url)));assert.ok(tool && manifest.contracts.tools.includes(tool.name));assert.ok(!tool.parameters.properties.apply);assert.ok(!tool.parameters.properties.exclude_watched);
+ await tool.execute('test',{type:'show',source:'both',min_seed_rating:8,max_seeds:3,per_seed:10,count:5,exclude_watchlisted:false});assert.deepEqual(calls.at(-1).args,['seeded-related','--type','show','--source','both','--min-seed-rating','8','--max-seeds','3','--per-seed','10','--count','5','--exclude-watchlisted=false','--json']);
+ const n=calls.length;await tool.execute('test',{max_seeds:11});assert.equal(calls.length,n);
+});
+test('seeded-related retains partial connections on a rate limit without replay',async()=>{
+ const tool=tools.find(t=>t.name==='trakt_seeded_related');const n=calls.length;mutationFailure=Object.assign(new Error('synthetic rate limit'),{stdout:JSON.stringify({kind:'seeded_related',scan_succeeded:false,stop_reason:'request_failed',items:[{trakt_id:'55',related_to:[{trakt_id:'66'}]}]}),stderr:'rate limited by trakt api: 429 (retry_after=60)'});
+ try{const result=await tool.execute('test',{});const r=JSON.parse(result.content[0].text);assert.equal(calls.length,n+1);assert.equal(r.rate_limited,true);assert.equal(r.operation.items[0].related_to[0].trakt_id,'66');}finally{mutationFailure=undefined;}
+});
