@@ -441,7 +441,17 @@ the collected history count must match the terminal page's reported total.
 Trakt does not provide a transactional snapshot: an unchanged activity marker is a
 consistency check, not an absolute snapshot guarantee. A changed marker fails the export.
 
-Defaults: `--limit 1000`, `--delay-ms 1000`, `--max-pages 10000` per resource.
+Defaults: `--limit 1000`, `--delay-ms 1000`, `--max-pages 10000` per resource,
+and `--timeout-seconds 600`. Increase the time budget for large or slow exports
+(up to 86400 seconds), for example `trakt-cli backup --output ./large.zip
+--timeout-seconds 7200 --json`. The deadline cancels request spacing and in-flight
+HTTP reads, then writes the incomplete manifest and closes the ZIP before exiting
+nonzero. Ctrl-C and SIGTERM use the same cooperative cancellation path.
+OpenClaw passes the same budget and reserves another 30 seconds for finalization,
+then forcibly terminates a hung process. Storage failure or forced termination
+can still prevent a usable ZIP; validate the manifest before using an archive.
+An older CLI that lacks the deadline flag refuses the plugin request before
+creating a backup. Update the CLI alongside the plugin.
 Backup reads request HTTP cache revalidation; this does not guarantee the service
 honors it. Missing pagination, an API error, changed page counts or page sizes,
 unreconciled item counts, duplicate IDs, or the page cap
@@ -603,7 +613,8 @@ remain visible, including when both archives reuse the same saved source.
 
 Comparison refuses archives with over 10,000 ZIP members, an expanded member
 over 16 MiB or a total expanded size over 512 MiB.
-OpenClaw exposes `trakt_backup` with `output`, `limit`, `delay_ms` and `max_pages`.
+OpenClaw exposes `trakt_backup` with `output`, `limit`, `delay_ms`, `max_pages`,
+`website_supplement` and `timeout_seconds`.
 The development CLI and plugin must both include this feature. Large histories can
 take several minutes; use the CLI directly if the plugin timeout is insufficient.
 

@@ -7,8 +7,8 @@ import { mock, test } from 'node:test';
 const calls = [];
 let mutationFailure;
 const execFile = () => { throw new Error('unexpected callback invocation'); };
-execFile[promisify.custom] = async (file, args) => {
-	calls.push({ file, args });
+execFile[promisify.custom] = async (file, args, options) => {
+	calls.push({ file, args, options });
 	if (mutationFailure) throw mutationFailure;
 	return { stdout: JSON.stringify({ items: [], page: '2', page_count: '3' }), stderr: '' };
 };
@@ -121,7 +121,7 @@ test('history-event rate limits retain whether a deletion was attempted', async 
 test('list discovery forwards page and limit and decodes JSON', async () => {
 	const tool = tools.find((tool) => tool.name === 'trakt_lists');
 	const result = await tool.execute('test', { page: 2, limit: 50 });
-	assert.deepEqual(calls.at(-1), {
+	assert.deepEqual({ file: calls.at(-1).file, args: calls.at(-1).args }, {
 		file: '/synthetic/trakt-cli', args: ['lists', '--page', '2', '--limit', '50', '--json'],
 	});
 	assert.deepEqual(JSON.parse(result.content[0].text), { items: [], page: '2', page_count: '3' });
@@ -141,7 +141,7 @@ test('backup forwards a local path as one argument without invoking a shell', as
 	const tool = tools.find((tool) => tool.name === 'trakt_backup');
 	const output = '/synthetic/private backups/new.zip';
 	await tool.execute('test', { output, limit: 250, delay_ms: 0, max_pages: 10, website_supplement: '/synthetic/private supplements/account.json' });
-	assert.deepEqual(calls.at(-1).args, ['backup', '--output', output, '--limit', '250', '--delay-ms', '0', '--max-pages', '10', '--website-supplement', '/synthetic/private supplements/account.json', '--json']);
+	assert.deepEqual(calls.at(-1).args, ['backup', '--output', output, '--limit', '250', '--delay-ms', '0', '--max-pages', '10', '--website-supplement', '/synthetic/private supplements/account.json', '--timeout-seconds', '600', '--json']);
 	assert.deepEqual(tool.parameters.required, ['output']);
 	const manifest = JSON.parse(readFileSync(new URL('../openclaw.plugin.json', import.meta.url)));
 	assert.ok(manifest.contracts.tools.includes('trakt_backup'));
@@ -374,3 +374,40 @@ test('seeded-related retains partial connections on a rate limit without replay'
 
 
 test('list comparison is read-only and forwards bounded proposals literally',async()=>{const tool=tools.find(t=>t.name==='trakt_list_compare');assert.ok(tool);assert.ok(!tool.parameters.properties.apply);await tool.execute('test',{source:'10',destination:'20',limit:3});assert.deepEqual(calls.at(-1).args,['lists','compare','--source','10','--destination','20','--limit','3','--json']);const n=calls.length;await tool.execute('test',{source:'10',destination:'20',apply:true});assert.equal(calls.length,n);});
+
+
+test('backup coordinates a cooperative CLI deadline and bounded finalization watchdog', async () => {
+ const tool = tools.find(t => t.name === 'trakt_backup');
+ await tool.execute('budget', { output: '/synthetic/budget.zip', timeout_seconds: 3600 });
+ assert.deepEqual(calls.at(-1).args, ['backup', '--output', '/synthetic/budget.zip', '--timeout-seconds', '3600', '--json']);
+ assert.equal(calls.at(-1).options.timeout, 3_630_000);
+ assert.equal(calls.at(-1).options.killSignal, 'SIGKILL');
+ await tool.execute('default-budget', { output: '/synthetic/default.zip' });
+ assert.ok(calls.at(-1).args.includes('--timeout-seconds'));
+ assert.equal(calls.at(-1).options.timeout, 630_000);
+ for (const timeout_seconds of [0, -1, 86401, 1.5]) {
+  const count = calls.length;
+  const result = JSON.parse((await tool.execute('invalid', { output: '/synthetic/invalid.zip', timeout_seconds })).content[0].text);
+  assert.equal(result.success, false);
+  assert.equal(calls.length, count);
+ }
+ await tools.find(t => t.name === 'trakt_backup_compare').execute('local', { before: '/synthetic/a.zip', after: '/synthetic/b.zip' });
+ assert.ok(!calls.at(-1).args.includes('--timeout-seconds'));
+ assert.equal(calls.at(-1).options.timeout, 600_000);
+ assert.equal(calls.at(-1).options.killSignal, undefined);
+});
+
+test('backup preserves finalized incomplete outcome on cooperative timeout', async () => {
+ const tool = tools.find(t => t.name === 'trakt_backup');
+ const operation = { output: '/synthetic/partial.zip', version: 1, complete: false, errors: ['context deadline exceeded'], files: [], resources: [] };
+ mutationFailure = Object.assign(new Error('exit 1'), { stdout: JSON.stringify(operation), stderr: 'context deadline exceeded' });
+ try {
+  const result = JSON.parse((await tool.execute('timeout', { output: operation.output })).content[0].text);
+  assert.equal(result.success, false);
+  assert.deepEqual(result.operation, operation);
+  mutationFailure = Object.assign(new Error('watchdog killed process'), { signal: 'SIGKILL', stdout: '{', stderr: '' });
+  const killed = JSON.parse((await tool.execute('watchdog', { output: operation.output })).content[0].text);
+  assert.equal(killed.success, false);
+  assert.equal(killed.operation, undefined);
+ } finally { mutationFailure = undefined; }
+});

@@ -2,17 +2,22 @@ package backup
 
 import (
 	"archive/zip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/omarshahine/trakt-plugin/api"
 )
@@ -458,5 +463,130 @@ func TestWebsiteFieldsAndReplyIdentityPreserved(t *testing.T) {
 	}
 	if namedResource(m, "comments/shows").Records != 2 {
 		t.Fatal("replies deduplicated by parent")
+	}
+}
+
+func TestExportCancellationRetainsCompletedPages(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	f := fixture()
+	o := options(t)
+	o.Context = ctx
+	o.Progress = func(r Resource) {
+		if r.Name == "history" && r.Pages == 1 {
+			cancel()
+		}
+	}
+	m, err := Export(f, o)
+	if !errors.Is(err, context.Canceled) || m.Complete || m.Consistency != "unverified" {
+		t.Fatalf("cancellation outcome: %+v %v", m, err)
+	}
+	files := archive(t, o.Output) // Reads every entry, validating ZIP structure and CRCs.
+	var stored Manifest
+	if err := json.Unmarshal(files["manifest.json"], &stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored.Complete || len(stored.Errors) != 1 || stored.FinishedAt.IsZero() {
+		t.Fatalf("missing finalized failure manifest: %+v", stored)
+	}
+	r := namedResource(stored, "history")
+	if r.Complete || r.Pages != 1 || r.Records != 2 || len(f.requests) != 1 {
+		t.Fatalf("cancelled export made more requests or lost progress: %+v %v", r, f.requests)
+	}
+	for _, entry := range stored.Files {
+		digest := sha256.Sum256(files[entry.Path])
+		if hex.EncodeToString(digest[:]) != entry.SHA256 {
+			t.Fatalf("bad checksum %s", entry.Path)
+		}
+	}
+}
+
+func TestExportDeadlineInterruptsRequestSpacing(t *testing.T) {
+	// An expired deadline must interrupt even a one-hour spacing delay and still
+	// finalize the archive. No wall-clock sleep or timing assertion is needed.
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+	f := fixture()
+	o := options(t)
+	o.Context = ctx
+	o.Delay = time.Hour
+	m, err := Export(f, o)
+	if !errors.Is(err, context.DeadlineExceeded) || m.Complete || f.markers != 0 {
+		t.Fatalf("deadline outcome: %+v %v", m, err)
+	}
+	files := archive(t, o.Output)
+	if len(files) != 1 || !strings.Contains(string(files["manifest.json"]), "context deadline exceeded") {
+		t.Fatalf("deadline archive missing manifest: %v", files)
+	}
+	// Also exercise cancellation while actually waiting between requests.
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	x := exporter{options: Options{Context: ctx2, Delay: time.Hour}, lastRequest: time.Now()}
+	done := make(chan error, 1)
+	go func() { done <- x.wait() }()
+	cancel2()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("wait: %v", err)
+	}
+}
+
+func TestExportCancellationInterruptsHTTPAndFinalizes(t *testing.T) {
+	// A real API client must cancel a stalled response body, not just the next
+	// page. All requests are synthetic and credentials are never loaded.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/users/synthetic-user/history" {
+			w.Header().Set("X-Pagination-Page", "1")
+			w.Header().Set("X-Pagination-Limit", "2")
+			w.Header().Set("X-Pagination-Page-Count", "1")
+			w.Header().Set("X-Pagination-Item-Count", "1")
+			w.WriteHeader(http.StatusOK)
+			w.(http.Flusher).Flush()
+			cancel()
+			<-r.Context().Done()
+			return
+		}
+		fmt.Fprint(w, `{"synthetic":true}`)
+	}))
+	defer server.Close()
+	client := api.APIClient{Context: ctx, Endpoint: server.URL, Client: server.Client()}
+	o := options(t)
+	o.Context = ctx
+	m, err := Export(&client, o)
+	if !errors.Is(err, context.Canceled) || m.Complete {
+		t.Fatalf("HTTP cancellation: %+v %v", m, err)
+	}
+	files := archive(t, o.Output)
+	var stored Manifest
+	if err := json.Unmarshal(files["manifest.json"], &stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored.Complete || len(stored.Files) != 4 || len(stored.Errors) != 1 {
+		t.Fatalf("stalled HTTP archive: %+v", stored)
+	}
+}
+
+type deadlineSource struct {
+	*fakeSource
+	ctx context.Context
+}
+
+func (s deadlineSource) GetBackupActivity() (json.RawMessage, error) {
+	<-s.ctx.Done()
+	return nil, s.ctx.Err()
+}
+
+func TestExportTimeBudgetExpiresAndFinalizes(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	o := options(t)
+	o.Context = ctx
+	m, err := Export(deadlineSource{fixture(), ctx}, o)
+	if !errors.Is(err, context.DeadlineExceeded) || m.Complete {
+		t.Fatalf("time budget outcome: %+v %v", m, err)
+	}
+	files := archive(t, o.Output)
+	if len(files) != 1 || !strings.Contains(string(files["manifest.json"]), "context deadline exceeded") {
+		t.Fatalf("time budget did not finalize manifest: %v", files)
 	}
 }

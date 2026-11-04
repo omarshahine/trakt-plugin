@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -18,6 +19,9 @@ import (
 )
 
 type APIClient struct {
+	// Context bounds all requests, including authentication refresh and retries.
+	// Nil preserves the default background context for existing callers.
+	Context context.Context
 	// The url of the API endpoint
 	Endpoint string
 	// The client for accessing the API
@@ -205,7 +209,11 @@ func (c *APIClient) RefreshAccessToken() error {
 }
 
 func (c *APIClient) doRequest(params requestParams) (*http.Response, error) {
-	req, err := http.NewRequest(params.method, c.Endpoint+params.path, nil)
+	ctx := c.Context
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	req, err := http.NewRequestWithContext(ctx, params.method, c.Endpoint+params.path, nil)
 	if err != nil {
 		return nil, err
 	}

@@ -275,6 +275,7 @@ const TOOLS: ToolDef[] = [
 			limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000, description: 'Records per API page (default 1000)' })),
 			delay_ms: Type.Optional(Type.Integer({ minimum: 0, description: 'Minimum milliseconds between requests (default 1000)' })),
 			max_pages: Type.Optional(Type.Integer({ minimum: 1, description: 'Maximum pages per resource (default 10000); hitting it makes export incomplete' })),
+			timeout_seconds: Type.Optional(Type.Integer({ minimum: 1, maximum: 86400, description: 'Export time budget in seconds (default 600, maximum 86400). Expiry finalizes an incomplete ZIP; increase for large or slow accounts.' })),
 			website_supplement: Type.Optional(Type.String({ minLength: 1, description: 'Local JSON from backup import-supplement; fills only missing website-only account fields, preserves raw API snapshots and records historical provenance' })),
 		}),
 	},
@@ -656,7 +657,12 @@ export default definePluginEntry({
 					}
 
 					try {
-						const args = buildCliArgs(tool.command, tool.subcommand, params);
+						const backupExport = tool.command === 'backup' && !tool.subcommand;
+						const backupSeconds = typeof params.timeout_seconds === 'number' ? params.timeout_seconds : 600;
+						// Always send the budget. Older CLIs must refuse the unknown flag before
+						// creating an archive rather than silently relying on a destructive timeout.
+						const cliParams = backupExport ? { ...params, timeout_seconds: backupSeconds } : params;
+						const args = buildCliArgs(tool.command, tool.subcommand, cliParams);
 						const env = tool.command === 'auth' ? authEnvironment(config) : undefined;
 						// 30s was too tight for `progress`, which iterates ~50 API calls
 						// (watchlist + watched + N× GetShowProgress) and empirically runs
@@ -667,7 +673,10 @@ export default definePluginEntry({
 						// flag so per-show progress checks don't hammer 50 API calls.
 						const { stdout } = await runCli(cliPath, args, {
 							// sync walks several services plus per-show history lookups.
-							timeout: ['sync', 'backup'].includes(tool.command) ? 600_000 : 120_000,
+							// Reserve 30s for manifest/ZIP closure after cooperative cancellation.
+							timeout: backupExport ? backupSeconds * 1000 + 30_000 : ['sync', 'backup'].includes(tool.command) ? 600_000 : 120_000,
+							// A hung CLI must remain bounded even though it handles SIGTERM.
+							killSignal: backupExport ? 'SIGKILL' : undefined,
 							maxBuffer: 4 * 1024 * 1024,
 							env,
 						});
@@ -701,7 +710,15 @@ export default definePluginEntry({
 						const errorOutput = stderr ? `${message}\n\nstderr: ${stderr}` : message;
 						let shortlistOperation: Record<string, unknown> | undefined;
  if(['shortlist','episode-tonight','seeded-related'].includes(tool.command) && error && typeof error==='object' && 'stdout' in error){try{const op=JSON.parse(String((error as {stdout:unknown}).stdout));if(['watch_tonight','episode_tonight','seeded_related'].includes(op?.kind) && op.scan_succeeded===false && Array.isArray(op.items) && typeof op.stop_reason==='string')shortlistOperation=op;}catch{/* Keep ordinary diagnostics; never replay a scan automatically. */}}
- let historyOperation: Record<string, unknown> | undefined;
+
+						let backupOperation: Record<string, unknown> | undefined;
+						if (tool.command === 'backup' && !tool.subcommand && error && typeof error === 'object' && 'stdout' in error) {
+							try {
+								const operation = JSON.parse(String((error as { stdout: unknown }).stdout));
+								if (operation?.output === params.output && operation.version === 1 && operation.complete === false && Array.isArray(operation.errors) && operation.errors.length > 0 && Array.isArray(operation.files) && Array.isArray(operation.resources)) backupOperation = operation;
+							} catch { /* A watchdog kill cannot promise a finalized archive. */ }
+						}
+						let historyOperation: Record<string, unknown> | undefined;
 						let ratingRestoreOperation: Record<string, unknown> | undefined;
 						if (tool.command === 'backup' && ['restore-ratings', 'restore-favorites', 'restore-collections'].includes(tool.subcommand ?? '') && params.apply === true && error && typeof error === 'object' && 'stdout' in error) {
 							try {
@@ -734,7 +751,7 @@ export default definePluginEntry({
 									{
 										success: false,
 										rate_limited: true,
-										...(historyOperation || ratingRestoreOperation || shortlistOperation ? { operation: historyOperation ?? ratingRestoreOperation ?? shortlistOperation } : {}),
+										...(historyOperation || ratingRestoreOperation || shortlistOperation || backupOperation ? { operation: historyOperation ?? ratingRestoreOperation ?? shortlistOperation ?? backupOperation } : {}),
 										retry_after_seconds: retryAfter,
 										error:
 											'Trakt API rate-limited this request' +
@@ -748,6 +765,7 @@ export default definePluginEntry({
 							);
 						}
 
+						if (backupOperation) return toolResult(JSON.stringify({ success: false, error: errorOutput, operation: backupOperation }, null, 2));
 						if(shortlistOperation) return toolResult(JSON.stringify({success:false,error:errorOutput,operation:shortlistOperation},null,2));
 						if (historyOperation) return toolResult(JSON.stringify({ success: false, error: errorOutput, operation: historyOperation }, null, 2));
 						if (ratingRestoreOperation) return toolResult(JSON.stringify({ success: false, error: errorOutput, operation: ratingRestoreOperation }, null, 2));

@@ -4,6 +4,7 @@ package backup
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -23,6 +24,9 @@ type Source interface {
 }
 
 type Options struct {
+	// Context cancels reads and request spacing, but never archive finalization.
+	// Sources performing network I/O must use the same context for their requests.
+	Context           context.Context
 	User              string
 	Output            string
 	Limit             int
@@ -79,6 +83,9 @@ func Export(source Source, o Options) (m Manifest, err error) {
 	if o.User == "" || o.Output == "" || o.Limit < 1 || o.Limit > 1000 || o.Delay < 0 || o.MaxPages < 1 {
 		return m, fmt.Errorf("user/output required; limit 1-1000, nonnegative delay and positive max-pages required")
 	}
+	if o.Context == nil {
+		o.Context = context.Background()
+	}
 	if o.WebsiteSupplement != nil {
 		if err := o.WebsiteSupplement.validate(); err != nil {
 			return m, err
@@ -101,6 +108,9 @@ func Export(source Source, o Options) (m Manifest, err error) {
 	}
 	x := exporter{source: source, options: o, zip: zip.NewWriter(f), manifest: &m}
 	workErr := x.run()
+	if workErr == nil {
+		workErr = o.Context.Err()
+	}
 	if workErr != nil {
 		m.Errors = append(m.Errors, workErr.Error())
 	}
@@ -127,17 +137,29 @@ func Export(source Source, o Options) (m Manifest, err error) {
 	return m, workErr
 }
 
-func (x *exporter) wait() {
+func (x *exporter) wait() error {
+	if err := x.options.Context.Err(); err != nil {
+		return err
+	}
 	if !x.lastRequest.IsZero() {
 		if remaining := x.options.Delay - time.Since(x.lastRequest); remaining > 0 {
-			time.Sleep(remaining)
+			timer := time.NewTimer(remaining)
+			defer timer.Stop()
+			select {
+			case <-x.options.Context.Done():
+				return x.options.Context.Err()
+			case <-timer.C:
+			}
 		}
 	}
 	x.lastRequest = time.Now()
+	return x.options.Context.Err()
 }
 
 func (x *exporter) run() error {
-	x.wait()
+	if err := x.wait(); err != nil {
+		return err
+	}
 	before, err := x.source.GetBackupActivity()
 	if err != nil {
 		return fmt.Errorf("initial activity marker: %w", err)
@@ -146,7 +168,9 @@ func (x *exporter) run() error {
 		return err
 	}
 	for _, resource := range []string{"user/settings", "user/profile", "user/stats"} {
-		x.wait()
+		if err := x.wait(); err != nil {
+			return err
+		}
 		data, err := x.source.GetBackupDocument(x.options.User, resource)
 		if err != nil {
 			return fmt.Errorf("%s: %w", resource, err)
@@ -191,7 +215,9 @@ func (x *exporter) run() error {
 			return err
 		}
 	}
-	x.wait()
+	if err := x.wait(); err != nil {
+		return err
+	}
 	after, err := x.source.GetBackupActivity()
 	if err != nil {
 		return fmt.Errorf("final activity marker: %w", err)
@@ -253,7 +279,9 @@ func (x *exporter) collect(resource, listID string, metadataCount int) ([]json.R
 	var inventory []json.RawMessage
 	pageCount, total, reportedLimit := 0, 0, 0
 	for page := 1; page <= x.options.MaxPages; page++ {
-		x.wait()
+		if err := x.wait(); err != nil {
+			return nil, err
+		}
 		records, p, err := x.source.GetBackupPage(x.options.User, resource, listID, api.PaginationsParams{Page: page, Limit: x.options.Limit})
 		if err != nil {
 			return nil, fmt.Errorf("%s page %d: %w", name, page, err)

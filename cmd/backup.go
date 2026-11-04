@@ -1,8 +1,12 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/omarshahine/trakt-plugin/api"
@@ -19,6 +23,15 @@ var backupCmd = &cobra.Command{
 		limit, _ := cmd.Flags().GetInt("limit")
 		delay, _ := cmd.Flags().GetInt("delay-ms")
 		maxPages, _ := cmd.Flags().GetInt("max-pages")
+		timeoutSeconds, _ := cmd.Flags().GetInt("timeout-seconds")
+		if timeoutSeconds < 1 || timeoutSeconds > 86400 {
+			return fmt.Errorf("timeout-seconds must be between 1 and 86400")
+		}
+		// The CLI owns cancellation so it can close the ZIP before the plugin watchdog.
+		signalCtx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		ctx, cancel := context.WithTimeout(signalCtx, time.Duration(timeoutSeconds)*time.Second)
+		defer cancel()
 		supplementPath, _ := cmd.Flags().GetString("website-supplement")
 		var supplement *backup.WebsiteSupplement
 		if supplementPath != "" {
@@ -32,11 +45,12 @@ var backupCmd = &cobra.Command{
 			return fmt.Errorf("output required; limit 1-1000, nonnegative delay-ms and positive max-pages required")
 		}
 		client := api.NewAPIClient()
+		client.Context = ctx
 		user, err := client.GetUserSlug()
 		if err != nil {
 			return fmt.Errorf("resolve trakt user: %w", err)
 		}
-		manifest, exportErr := backup.Export(&client, backup.Options{User: user, Output: output, WebsiteSupplement: supplement, Limit: limit, Delay: time.Duration(delay) * time.Millisecond, MaxPages: maxPages, Progress: func(r backup.Resource) {
+		manifest, exportErr := backup.Export(&client, backup.Options{Context: ctx, User: user, Output: output, WebsiteSupplement: supplement, Limit: limit, Delay: time.Duration(delay) * time.Millisecond, MaxPages: maxPages, Progress: func(r backup.Resource) {
 			if r.Pages%25 == 0 || r.Complete {
 				fmt.Fprintf(cmd.ErrOrStderr(), "%s: %d/%d records, %d pages\n", r.Name, r.Records, r.Expected, r.Pages)
 			}
@@ -61,6 +75,7 @@ func init() {
 	_ = backupCmd.MarkFlagRequired("output")
 	backupCmd.Flags().Int("limit", 1000, "Records per API page (1-1000)")
 	backupCmd.Flags().Int("delay-ms", 1000, "Minimum delay between API requests")
+	backupCmd.Flags().Int("timeout-seconds", 600, "Cooperative export time budget (1-86400 seconds); finalizes an incomplete ZIP on expiry")
 	backupCmd.Flags().Int("max-pages", 10000, "Maximum pages per resource; incomplete if reached")
 	backupCmd.Flags().String("website-supplement", "", "Optional saved website-only fields; historical provenance is recorded and raw API snapshots retained")
 	backupCmd.AddCommand(importWebsiteSupplementCmd)
