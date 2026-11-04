@@ -348,3 +348,15 @@ test('watch-tonight preserves explicit exclusion opt-out and has no apply mode',
 test('partial shortlist matches and rate-limit stop remain visible without replay',async()=>{
  const t=tools.find(x=>x.name==='trakt_watch_tonight');for(const limited of [false,true]){const n=calls.length;mutationFailure=Object.assign(new Error(limited?'rate limited by trakt api: 429 (retry_after=60)':'scan failed'),{stdout:JSON.stringify({kind:'watch_tonight',scan_succeeded:false,stop_reason:'request_failed',items:[{trakt_id:'55'}]}),stderr:'scan stopped'});try{const r=JSON.parse((await t.execute('partial',{})).content[0].text);assert.equal(r.operation.items[0].trakt_id,'55');assert.equal(r.operation.scan_succeeded,false);assert.equal(calls.length,n+1);if(limited){assert.equal(r.rate_limited,true);assert.equal(r.retry_after_seconds,60)}}finally{mutationFailure=undefined;}}
 });
+
+
+test('episode-tonight registers bounded read-only inputs and forwards the episode runtime budget',async()=>{
+ const tool=tools.find(t=>t.name==='trakt_episode_tonight');const manifest=JSON.parse(readFileSync(new URL('../openclaw.plugin.json',import.meta.url)));assert.ok(tool && manifest.contracts.tools.includes(tool.name));assert.ok(!tool.parameters.properties.apply);assert.equal(tool.parameters.properties.include_specials.default,false);
+ await tool.execute('test',{count:3,max_shows:7,runtime_max:45,include_specials:true});assert.deepEqual(calls.at(-1).args,['episode-tonight','--count','3','--max-shows','7','--runtime-max','45','--include-specials','--json']);
+ const before=calls.length;await tool.execute('test',{max_shows:21});assert.equal(calls.length,before);
+});
+test('episode-tonight preserves partial suggestions on errors without replay',async()=>{
+ const tool=tools.find(t=>t.name==='trakt_episode_tonight');const before=calls.length;
+ mutationFailure=Object.assign(new Error('synthetic scan failure'),{stdout:JSON.stringify({kind:'episode_tonight',scan_succeeded:false,items:[{show_trakt_id:'55'}],stop_reason:'request_failed'}),stderr:'HTTP 503'});
+ try{const result=await tool.execute('test',{});const r=JSON.parse(result.content[0].text);assert.equal(calls.length,before+1);assert.equal(r.operation.items[0].show_trakt_id,'55');assert.equal(r.operation.scan_succeeded,false);}finally{mutationFailure=undefined;}
+});

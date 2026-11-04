@@ -53,6 +53,7 @@
       "trakt_search",
       "trakt_genres",
       "trakt_watch_tonight",
+      "trakt_episode_tonight",
       "trakt_title_details",
       "trakt_show_seasons",
       "trakt_season_episodes",

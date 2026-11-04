@@ -346,3 +346,7 @@ reusing metadata criteria and default-on watched/watchlist exclusions. Factual
 explanations are metadata/snapshot evidence, not inferred taste or availability.
 Optional list target produces an unapplied preview only. See
 [limits, partial results and live evidence](../docs/watch-tonight.md).
+
+### Next episodes for tonight
+
+`trakt_episode_tonight` checks a bounded window of recently watched shows, verifying next-episode completion, aired dates and optional per-episode runtime. Specials default off; missing dates are withheld. No account writes. See [contract and live evidence](../docs/episode-tonight.md).

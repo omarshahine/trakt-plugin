@@ -222,3 +222,7 @@ are synthetic-tested; no global completeness, availability or taste claim.
 4. Add authorized populated-category and VIP test coverage where available.
 5. Keep original archives immutable and distinguish historical supplements from
    current API observations. Category coverage is not byte-for-byte website parity.
+
+## Episode-aware tonight suggestions (November 3)
+
+Implemented locally: `episode-tonight` / `trakt_episode_tonight`. Five real dedicated-test-account plugin cases passed: three verified next episodes, two within 45 minutes, no-fit runtime, one-show budget and specials-option query. Raw progress independently matched returned IDs and incomplete flags; original 11 history events and credential bytes remained unchanged. Positive specials, future/unknown dates and failures remain synthetic-tested. See [full contract](episode-tonight.md). Not installed, submitted or released.
