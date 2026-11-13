@@ -158,9 +158,10 @@ type netflixItem struct {
 var (
 	// One rendered list item: <span>11/8/26</span><a ...title-link...>Title</a>
 	nfHTMLItem = regexp.MustCompile(`data-uia="viewing-activity-page\+list-item\+description"[^>]*>\s*<span[^>]*>([0-9/]+)</span>\s*<a[^>]*>([^<]*)</a>`)
-	// `Series: Season 2: "Episode"` / `Series: Limited Series: "Episode"`;
-	// the series name may itself contain colons, so match it lazily.
-	nfHTMLEpisode = regexp.MustCompile(`^(.+?): ([^:"]+): "(.*)"$`)
+	// `Series: Season 2: "Episode"` / `Series: Limited Series: "Episode"`.
+	// The series name may itself contain colons, so the middle part must be a
+	// recognised season label; anything else stays in the series name.
+	nfHTMLEpisode = regexp.MustCompile(`^(.+?): ((?:Season|Part|Volume|Vol\.|Book|Chapter|Collection|Series) [^:"]+|Limited Series|Miniseries): "(.*)"$`)
 	// `Series: "Episode"` with no season descriptor.
 	nfHTMLBareEpisode = regexp.MustCompile(`^(.+?): "(.*)"$`)
 )
@@ -248,8 +249,11 @@ func ParseNetflixActivity(page string) ([]Watch, error) {
 func parseNetflixHTML(page string) ([]Watch, error) {
 	matches := nfHTMLItem.FindAllStringSubmatch(page, -1)
 	if len(matches) == 0 {
-		if strings.Contains(page, `viewing-activity-page`) {
-			return nil, nil // the page rendered, the profile has no history
+		switch {
+		case strings.Contains(page, `viewing-activity-page+list-item`):
+			return nil, fmt.Errorf("netflix: viewing activity rows did not parse (page layout changed?)")
+		case strings.Contains(page, `viewing-activity-page`):
+			return nil, nil // the page rendered without rows: no history
 		}
 		return nil, fmt.Errorf("netflix: viewing activity not found (page layout changed?)")
 	}
