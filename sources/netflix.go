@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -12,8 +13,9 @@ import (
 )
 
 // Netflix reads the account's Viewing Activity page for one profile. The page
-// embeds the latest viewedItems (date, series, season descriptor, episode
-// title) in its server-rendered state; episodes come back by title, so the
+// server-renders the latest items as "M/D/YY" plus a title link such as
+// `Series: Season 2: "Episode"` (older builds embedded a viewedItems JSON
+// array instead; both are parsed). Episodes come back by title, so the
 // resolver maps them to numbers.
 type Netflix struct {
 	Cookies CookieLoader
@@ -24,7 +26,8 @@ type Netflix struct {
 
 func (n *Netflix) Name() string { return "netflix" }
 
-const netflixActivity = "https://www.netflix.com/viewingactivity"
+// /viewingactivity now redirects here (2026-11); request it directly.
+const netflixActivity = "https://www.netflix.com/settings/viewed"
 
 func (n *Netflix) Fetch(ctx context.Context) ([]Watch, error) {
 	jar, err := n.Cookies(ctx, ".netflix.com")
@@ -152,11 +155,23 @@ type netflixItem struct {
 	EpisodeTitle     string `json:"episodeTitle"`
 }
 
-// ParseNetflixActivity extracts viewedItems from the page.
+var (
+	// One rendered list item: <span>11/8/26</span><a ...title-link...>Title</a>
+	nfHTMLItem = regexp.MustCompile(`data-uia="viewing-activity-page\+list-item\+description"[^>]*>\s*<span[^>]*>([0-9/]+)</span>\s*<a[^>]*>([^<]*)</a>`)
+	// `Series: Season 2: "Episode"` / `Series: Limited Series: "Episode"`.
+	// The series name may itself contain colons, so the middle part must be a
+	// recognised season label; anything else stays in the series name.
+	nfHTMLEpisode = regexp.MustCompile(`^(.+?): ((?:Season|Part|Volume|Vol\.|Book|Chapter|Collection|Series) [^:"]+|Limited Series|Miniseries): "(.*)"$`)
+	// `Series: "Episode"` with no season descriptor.
+	nfHTMLBareEpisode = regexp.MustCompile(`^(.+?): "(.*)"$`)
+)
+
+// ParseNetflixActivity extracts the viewing history from the page: the
+// server-rendered list items, or the legacy embedded viewedItems array.
 func ParseNetflixActivity(page string) ([]Watch, error) {
 	i := strings.Index(page, `"viewedItems"`)
 	if i < 0 {
-		return nil, fmt.Errorf("netflix: viewedItems not found (page layout changed?)")
+		return parseNetflixHTML(page)
 	}
 	j := strings.IndexByte(page[i:], '[')
 	if j < 0 {
@@ -224,6 +239,52 @@ func ParseNetflixActivity(page string) ([]Watch, error) {
 			continue
 		}
 		out = append(out, Watch{Kind: KindMovie, Source: "netflix", MovieTitle: it.Title, WatchedAt: when})
+	}
+	return out, nil
+}
+
+// parseNetflixHTML reads the list items rendered on /settings/viewed. Only
+// the first page (about six titles) is server-rendered; "Show More" fetches
+// the rest client-side, which a 4-hourly sync does not need.
+func parseNetflixHTML(page string) ([]Watch, error) {
+	matches := nfHTMLItem.FindAllStringSubmatch(page, -1)
+	if len(matches) == 0 {
+		switch {
+		case strings.Contains(page, `viewing-activity-page+list-item`):
+			return nil, fmt.Errorf("netflix: viewing activity rows did not parse (page layout changed?)")
+		case strings.Contains(page, `viewing-activity-page`):
+			return nil, nil // the page rendered without rows: no history
+		}
+		return nil, fmt.Errorf("netflix: viewing activity not found (page layout changed?)")
+	}
+	var out []Watch
+	for _, m := range matches {
+		when := netflixWhen(netflixItem{DateStr: m[1]})
+		title := strings.TrimSpace(html.UnescapeString(m[2]))
+		if title == "" {
+			continue
+		}
+		season, show, episode := 1, "", ""
+		if e := nfHTMLEpisode.FindStringSubmatch(title); e != nil {
+			show, episode = e[1], e[3]
+			if n := nfSeasonNum.FindString(e[2]); n != "" {
+				season, _ = strconv.Atoi(n)
+			}
+		} else if e := nfHTMLBareEpisode.FindStringSubmatch(title); e != nil {
+			show, episode = e[1], e[2]
+		}
+		if show != "" {
+			out = append(out, Watch{
+				Kind:         KindEpisode,
+				Source:       "netflix",
+				ShowTitle:    show,
+				Season:       season,
+				EpisodeTitle: episode,
+				WatchedAt:    when,
+			})
+			continue
+		}
+		out = append(out, Watch{Kind: KindMovie, Source: "netflix", MovieTitle: title, WatchedAt: when})
 	}
 	return out, nil
 }

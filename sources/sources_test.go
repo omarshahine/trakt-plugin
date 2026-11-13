@@ -150,6 +150,63 @@ func TestNetflixParsing(t *testing.T) {
 	}
 }
 
+func TestNetflixSettingsViewedHTML(t *testing.T) {
+	item := func(date, title string) string {
+		return `<div data-uia="viewing-activity-page+list-item"><p><span data-uia="viewing-activity-page+list-item+description" class="x"><span>` +
+			date + `</span><a data-uia="viewing-activity-page+list-item+description+title-link" data-cl-view="movieDetails" href="https://www.netflix.com/title/1">` +
+			title + `</a></span></p></div>`
+	}
+	page := `<script>{"userInfo":{"data":{"name":"Alex","guid":"ALEXGUID00000000000000000"}}}</script>` +
+		item("11/10/26", `The Diplomat: Season 2: &quot;When a Stranger Calls&quot;`) +
+		item("11/8/26", `High School Musical: The Musical: The Series: Season 4: &quot;Pilot: Part 2&quot;`) +
+		item("11/7/26", `Example Mini: Limited Series: &quot;Episode 1&quot;`) +
+		item("11/6/26", `Example Special: &quot;Live&quot;`) +
+		item("11/5/26", `Example: Subtitle: &quot;Pilot&quot;`) +
+		item("5/3/26", `Example Movie: The Sequel &amp; More`)
+	if got := NetflixActiveProfile(page); got != "Alex" {
+		t.Errorf("active profile = %q", got)
+	}
+	w, err := ParseNetflixActivity(page)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(w) != 6 {
+		t.Fatalf("want 6, got %+v", w)
+	}
+	want := []struct {
+		show    string
+		season  int
+		episode string
+	}{
+		{"The Diplomat", 2, "When a Stranger Calls"},
+		{"High School Musical: The Musical: The Series", 4, "Pilot: Part 2"},
+		{"Example Mini", 1, "Episode 1"},
+		{"Example Special", 1, "Live"},
+		{"Example: Subtitle", 1, "Pilot"},
+	}
+	for i, e := range want {
+		if w[i].Kind != KindEpisode || w[i].ShowTitle != e.show || w[i].Season != e.season || w[i].EpisodeTitle != e.episode {
+			t.Errorf("item %d = %+v, want %+v", i, w[i], e)
+		}
+	}
+	if w[0].WatchedAt.Format("2006-01-02 15:04") != "2026-11-10 20:00" {
+		t.Errorf("date = %v", w[0].WatchedAt)
+	}
+	if w[5].Kind != KindMovie || w[5].MovieTitle != "Example Movie: The Sequel & More" {
+		t.Errorf("movie = %+v", w[5])
+	}
+
+	if w, err := ParseNetflixActivity(`<div data-uia="viewing-activity-page+page"></div>`); err != nil || len(w) != 0 {
+		t.Errorf("empty history = %+v, %v", w, err)
+	}
+	if _, err := ParseNetflixActivity(`<div data-uia="viewing-activity-page+list-item"><b>11/8/26</b></div>`); err == nil {
+		t.Error("rows present but unparsed should error")
+	}
+	if _, err := ParseNetflixActivity(`<html>something else</html>`); err == nil {
+		t.Error("unrecognised page should error")
+	}
+}
+
 func TestParamount(t *testing.T) {
 	body := []byte(`{"success":true,"result":{"data":[
 	 {"title":"Show X","showSeriesTitle":"Show X","seasonNumber":"2","episodeNumber":"3","progress":91,"isMovie":false},
