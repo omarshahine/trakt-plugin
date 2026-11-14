@@ -662,3 +662,19 @@ func TestAuthVerificationURLLengthBound(t *testing.T) {
 		t.Fatal("oversized verification URL accepted")
 	}
 }
+
+func TestAuthVerificationURLHosts(t *testing.T) {
+	// Trakt's device-code endpoint now returns https://auth.trakt.tv/activate.
+	for _, ok := range []string{"https://trakt.tv/activate", "https://www.trakt.tv/activate", "https://auth.trakt.tv/activate"} {
+		response := &api.AuthDeviceCodeResp{DeviceCode: "SYNTHETIC-PRIVATE", UserCode: "SYNTHETIC-CODE", VerificationURL: ok, ExpiresIn: 600, Interval: 6}
+		if !validDeviceResponse(response) {
+			t.Errorf("%s rejected", ok)
+		}
+	}
+	for _, bad := range []string{"https://auth.trakt.tv.example.com/activate", "https://evil-auth.trakt.tv.example/activate", "https://authtrakt.tv/activate", "https://auth.trakt.tv:8443/activate", "http://auth.trakt.tv/activate"} {
+		response := &api.AuthDeviceCodeResp{DeviceCode: "SYNTHETIC-PRIVATE", UserCode: "SYNTHETIC-CODE", VerificationURL: bad, ExpiresIn: 600, Interval: 6}
+		if validDeviceResponse(response) {
+			t.Errorf("%s accepted", bad)
+		}
+	}
+}
