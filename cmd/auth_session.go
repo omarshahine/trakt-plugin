@@ -61,7 +61,7 @@ func validDeviceResponse(resp *api.AuthDeviceCodeResp) bool {
 		return false
 	}
 	u, err := url.Parse(resp.VerificationURL)
-	return err == nil && u.Scheme == "https" && u.User == nil && u.RawQuery == "" && u.Fragment == "" && u.Opaque == "" && (u.Hostname() == "trakt.tv" || u.Hostname() == "www.trakt.tv") && (u.Port() == "" || u.Port() == "443")
+	return err == nil && u.Scheme == "https" && u.User == nil && u.RawQuery == "" && u.Fragment == "" && u.Opaque == "" && (u.Hostname() == "trakt.tv" || u.Hostname() == "www.trakt.tv" || u.Hostname() == "auth.trakt.tv") && (u.Port() == "" || u.Port() == "443")
 }
 
 func publicDeviceResponse(resp *api.AuthDeviceCodeResp, clientSecret string) bool {
